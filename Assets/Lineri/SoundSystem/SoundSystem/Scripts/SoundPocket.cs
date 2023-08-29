@@ -110,6 +110,7 @@ namespace Lineri.SoundSystem
             PlayClips = false;
 
             ResetClipQueue();
+            ResetTimeClipsPlayed();
         }
 
         public void PauseClipsPlayning()
@@ -131,6 +132,12 @@ namespace Lineri.SoundSystem
             }
 
             _timeClipsStopPause = Time.realtimeSinceStartup;
+        }
+
+        public void ResetTimeClipsPlayed()
+        {
+            _timeMaxClipPlayed = 0f;
+            _timeClipPlayed = 0f;
         }
         #endregion
 
