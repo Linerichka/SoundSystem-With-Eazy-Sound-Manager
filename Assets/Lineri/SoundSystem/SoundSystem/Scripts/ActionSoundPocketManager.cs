@@ -44,6 +44,12 @@ namespace Lineri.SoundSystem
         {
             SortThroughSoundPocketAndChek(_methods.UnPause);
         }
+
+        // use this to reset the time in order to force Play() to start ahead of time.
+        public void ActionResetTimeClipsPlayed()
+        {
+            SortThroughSoundPocketAndChek(_methods.ResetTimeClipsPlayed);
+        }
         #endregion
 
         #region logic
@@ -53,7 +59,8 @@ namespace Lineri.SoundSystem
             ResetQueue,
             Stop,
             Pause,
-            UnPause
+            UnPause,
+            ResetTimeClipsPlayed
         };
 
         private void SortThroughSoundPocketAndChek(_methods method)
@@ -82,6 +89,9 @@ namespace Lineri.SoundSystem
                     break;
                 case _methods.UnPause:
                     soundPocket.UnPauseClipsPlayning();
+                    break;
+                case _methods.ResetTimeClipsPlayed:
+                    soundPocket.ResetTimeClipsPlayed();
                     break;
             }
         }
