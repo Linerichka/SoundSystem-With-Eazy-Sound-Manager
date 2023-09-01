@@ -1,4 +1,4 @@
-## Перевод:
+## Translation:
 * <a href = "https://github.com/Linerichka/SoundSystem-With-Eazy-Sound-Manager/blob/main/README_RU.md">Русский</a>
 * <a href = "https://github.com/Linerichka/SoundSystem-With-Eazy-Sound-Manager/blob/main/README.md">English</a>
 

@@ -96,7 +96,7 @@ namespace Lineri.SoundSystem
             set
             {
                 loop = value;
-                if(AudioSource != null)
+                if (AudioSource != null)
                 {
                     AudioSource.loop = loop;
                 }
