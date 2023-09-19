@@ -4,15 +4,24 @@ namespace Lineri.SoundSystem
 {
     public class ActionSoundPocketManager : MonoBehaviour
     {
+        public delegate void HandlerMethod();
+        public HandlerMethod Play;
+        public HandlerMethod ResetQueue;
+        public HandlerMethod Stop;
+        public HandlerMethod Pause;
+        public HandlerMethod UnPause;
+        public HandlerMethod ResetTime;
+
         private void OnEnable()
         {
             //use such a construction to bind a method of an instance of a class to an event, inside your class
             //action += actionSoundPocketManager.ActionPlayHandler;
+            SetVariables();
         }
 
         private void OnDisable()
         {
-            //action += actionSoundPocketManager.ActionPlayHandler;
+            UnSetVariables();
         }
 
         #region Handlers
@@ -48,9 +57,34 @@ namespace Lineri.SoundSystem
         // use this to reset the time in order to force Play() to start ahead of time.
         public void ActionResetTimeClipsPlayed()
         {
-            SortThroughSoundPocketAndChek(_methods.ResetTimeClipsPlayed);
+            SortThroughSoundPocketAndChek(_methods.ResetTimePlayed);
+        }
+
+        public void Initialization()
+        {
+            SetVariables();
         }
         #endregion
+
+        private void SetVariables()
+        {
+            Play = ActionPlayHandler;
+            ResetQueue = ActionResetQueueHandler;
+            Stop = ActionStopClipsHandler;
+            Pause = ActionPauseClipsHandler;
+            UnPause = ActionUnPauseClipsHandler;
+            ResetTime = ActionResetTimeClipsPlayed;
+        }
+
+        private void UnSetVariables()
+        {
+            Play = null;
+            ResetQueue = null;
+            Stop = null;
+            Pause = null;
+            UnPause = null;
+            ResetTime = null;
+        }
 
         #region logic
         private enum _methods
@@ -60,13 +94,15 @@ namespace Lineri.SoundSystem
             Stop,
             Pause,
             UnPause,
-            ResetTimeClipsPlayed
+            ResetTimePlayed
         };
 
         private void SortThroughSoundPocketAndChek(_methods method)
         {
             foreach (SoundPocket soundPocket in gameObject.GetComponents<SoundPocket>())
             {
+                if (soundPocket == null) continue;
+
                 CallMethodsInSoundPocket(soundPocket, method);
             }
         }
@@ -90,7 +126,7 @@ namespace Lineri.SoundSystem
                 case _methods.UnPause:
                     soundPocket.UnPauseClipsPlayning();
                     break;
-                case _methods.ResetTimeClipsPlayed:
+                case _methods.ResetTimePlayed:
                     soundPocket.ResetTimeClipsPlayed();
                     break;
             }

@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 
 namespace Lineri.SoundSystem
 {
@@ -37,10 +38,7 @@ namespace Lineri.SoundSystem
         /// </summary>
         public bool Activated { get; private set; }
 
-        /// <summary>
-        /// Whether the audio is currently pooled. Do not modify this value, it is specifically used by EazySoundManager.
-        /// </summary>
-        public bool Pooled { get; set; }
+        public bool Deleted { get; private set; }
 
         /// <summary>
         /// The volume of the audio. Use SetVolume to change it.
@@ -346,7 +344,6 @@ namespace Lineri.SoundSystem
             this.FadeOutSeconds = fadeOutValue;
 
             Volume = 0f;
-            Pooled = false;
 
             // Set audiosource default values
             Mute = false;
@@ -368,6 +365,11 @@ namespace Lineri.SoundSystem
             IsPlaying = false;
             Paused = false;
             Activated = false;
+        }
+
+        public void Delete()
+        {
+            Deleted = true;
         }
 
         /// <summary>
@@ -406,19 +408,6 @@ namespace Lineri.SoundSystem
         /// <param name="volume">The target volume</param>
         public void Play(float volume)
         {
-            // Check if audio still exists in sound manager
-            if (Pooled)
-            {
-                // If not, restore it from the audioPool
-                bool restoredFromPool = EazySoundManager.RestoreAudioFromPool(Type, AudioID);
-                if (!restoredFromPool)
-                {
-                    return;
-                }
-
-                Pooled = true;
-            }
-
             // Recreate audiosource if it does not exist
             if (AudioSource == null)
             {
@@ -523,11 +512,6 @@ namespace Lineri.SoundSystem
         /// </summary>
         public void Update()
         {
-            if (AudioSource == null)
-            {
-                return;
-            }
-
             Activated = true;
 
             // Increase/decrease volume to reach the current target
