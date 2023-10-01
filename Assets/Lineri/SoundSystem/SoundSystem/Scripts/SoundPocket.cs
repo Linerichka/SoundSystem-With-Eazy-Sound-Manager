@@ -179,10 +179,7 @@ namespace Lineri.SoundSystem
         private void PlayAllClipsInListTogether(bool callPlay)
         {
             if (!((_clipsTogetherPlayCalled && LoopClips) || callPlay)) return;
-            if (!PlaybackOfClipsIsComplete())
-            {
-                return;
-            }
+            if (!PlaybackOfClipsIsComplete()) return;           
 
             PlayAllClipsInList(MusicClips, _clipType.Music);
             PlayAllClipsInList(SoundClips, _clipType.Sound);
@@ -448,6 +445,7 @@ namespace Lineri.SoundSystem
             SoundVolume = _soundVolume;
             Pitch = _pitch;
             RandomPitch = _randomPitch;
+            _listsClipsChanged = true;
         }
         #endregion
     }

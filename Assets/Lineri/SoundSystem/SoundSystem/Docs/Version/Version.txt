@@ -1,2 +1,2 @@
-Current sound system version: 0.0.1.0
+Current sound system version: 0.1.0.0
 Current plugin version: 1.3.1

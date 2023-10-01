@@ -208,6 +208,7 @@ namespace Lineri.SoundSystem
         {
             // Go through all audios and remove them if they should not persist through scenes
             List<int> keys = new List<int>(audioDict.Keys);
+
             foreach (int key in keys)
             {
                 Audio audio = audioDict[key];
@@ -339,7 +340,6 @@ namespace Lineri.SoundSystem
         private static Audio GetAudio(Audio.AudioType audioType, AudioClip audioClip)
         {
             Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
-            List<int> keys = new List<int>(audioDict.Keys);
 
             foreach (Audio audio in audioDict.Values)
             {
@@ -784,6 +784,7 @@ namespace Lineri.SoundSystem
             Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
 
             List<int> keys = new List<int>(audioDict.Keys);
+
             foreach (int key in keys)
             {
                 Audio audio = audioDict[key];
@@ -798,42 +799,43 @@ namespace Lineri.SoundSystem
         /// <summary>
         /// Resume all audio playing
         /// </summary>
-        public static void ResumeAll()
+        public static void UnPauseAll()
         {
-            ResumeAllMusic();
-            ResumeAllSounds();
-            ResumeAllUISounds();
+            UnPauseAllMusic();
+            UnPauseAllSounds();
+            UnPauseAllUISounds();
         }
 
         /// <summary>
         /// Resume all music playing
         /// </summary>
-        public static void ResumeAllMusic()
+        public static void UnPauseAllMusic()
         {
-            ResumeAllAudio(Audio.AudioType.Music);
+            UnPauseAllAudio(Audio.AudioType.Music);
         }
 
         /// <summary>
         /// Resume all sound fx playing
         /// </summary>
-        public static void ResumeAllSounds()
+        public static void UnPauseAllSounds()
         {
-            ResumeAllAudio(Audio.AudioType.Sound);
+            UnPauseAllAudio(Audio.AudioType.Sound);
         }
 
         /// <summary>
         /// Resume all UI sound fx playing
         /// </summary>
-        public static void ResumeAllUISounds()
+        public static void UnPauseAllUISounds()
         {
-            ResumeAllAudio(Audio.AudioType.UISound);
+            UnPauseAllAudio(Audio.AudioType.UISound);
         }
 
-        private static void ResumeAllAudio(Audio.AudioType audioType)
+        private static void UnPauseAllAudio(Audio.AudioType audioType)
         {
             Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
 
             List<int> keys = new List<int>(audioDict.Keys);
+
             foreach (int key in keys)
             {
                 Audio audio = audioDict[key];

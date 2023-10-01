@@ -13,21 +13,31 @@
 * Ease of use: to add background music, it is enough to add a prefab to the stage and add the necessary clips, you do not need to additionally write a single line of code.
 * Speed: Due to its simplicity, **SoundSystem** greatly reduces the time to develop a complex sound scheme in a project.
 * Modularity: allows you to use any number of instances on stage without affecting each other's work, while allowing the possibility of combining several instances to create complex sound schemes.
-* Allows you to edit all the settings of a group of clips directly from the inspector..
+* Allows you to edit all the settings of a group of clips directly from the inspector.
 
 ## Using:
 You can also get acquainted with a short tutorial on the basic functions of the **SoundSystem**: <a href = "https://youtu.be/kXDuEaaw7Ao">tutorial</a>.
 1. Import an asset into your Unity project.
 2. Add the prefab "Sound" to the scene, which is located along the path:  "Assets/Lineri/SoundSystem/SoundSystem/Prefabs/Sound.prefab".
-3. Assign the necessary clip or clips to the appropriate fields, set the desired settings.
-4. Also, the *SoundPocket* class, which is located on the prefab "Sound" contains the bool variable "Play Sound On Awake", if its value is set to true, then when loading the scene, the queue of clips will start playing. This allows you to create simple sound schemes without additional code, for example, it can be used for background music by looping a queue of clips using the "Loop Clips" variable..
-5. But if you need a more complex interaction, you need to create a new script that will receive the *ActionSoundPocketManager* class from the prefab placed on the scene and call any of its public methods.
-Пример:
->    using Lineri.SoundSystem; ..............
+3. Select the child object "SoundPocket".
+4. Assign the necessary clip or clips to the appropriate fields of the *SoundPocket* class, set the desired settings.
+5. Also, the *SoundPocket* class contains the bool variable "Play Sound On Awake", if its value is set to true, then when loading the scene, the queue of clips will start playing. This allows you to create simple sound schemes without additional code, for example, it can be used for background music by looping a queue of clips using the "Loop Clips" variable.
+6. But if you need a more complex interaction, you need to create a new script that will inherit from the *SoundPocketManager* class from the prefab placed on the stage and call any of its methods that ends in "Handler".
+Example:
+>    public class MyClass : SoundPocketManager{
+> 
+>    using Lineri.SoundSystem;
+> 
+>    void Start()
+>   {
+> 
+>    PlayHandler();
+> 
+>   } }
 
->    GameObject.Find("Sound").GetComponent<ActionSoundPocketManager>().ActionPlayHandler();
+7. After that, you need to add this class to the "Sound" object. In the "SoundPocket" field, assign a reference to the object that contains the "SoundPocket" class, in the case of an unchanged prefab, it will be the "SoundPocket" object.
 
-Exactly the same approach with the rest of the methods marked in the *ActionSoundPocketManager* script with the "public" modifier. It is important to know here that the *Action Sound Pocket Manager* class calls methods for all *SoundPocket* classes that are on the same object with it. Also, an object can have an unlimited number of classes *SoundPocket* and *ActionSoundPocketManager*. This approach allows you to conveniently group the necessary clips and easily use them.
+Exactly the same approach with the rest of the methods in the *SoundPocketManager* class whose name ends in "Handler". It is important to know here that the *SoundPocketManager* class calls methods for all *SoundPocket* classes that are located on the object referenced in the "SoundPocket" field of the *SoundPocketManager* class. Also, an object can have an unlimited number of *SoundPocket* classes. This approach allows you to conveniently group the necessary clips and easily use them.
 
 ## Questions and answers:
 * **How much does the use of the plugin speed up the development of the sound scheme of the project?** If you omit all the alterations and compare the integration to the finished project, then one development without a plugin is about 6 times longer, again it all depends on the specific project. It is also worth bearing in mind the large number of functions that the plugin provides and the high speed of changing the sound system when using it.
