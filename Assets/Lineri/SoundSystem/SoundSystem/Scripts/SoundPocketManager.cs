@@ -4,10 +4,28 @@ namespace Lineri.SoundSystem
 {
     public abstract class SoundPocketManager : MonoBehaviour
     {
-        [SerializeField] protected GameObject _soundPocketPrefab;
         [SerializeField] protected GameObject _soundPocket;
-        protected bool _soundPocketMethodsCanExecuted = true;
 
+        //deprecated, use SoundPocketPrefab instead
+        [SerializeField] protected GameObject _soundPocketPrefab;
+        protected GameObject SoundPocketPrefab {
+            get { return _soundPocketPrefab; }
+            set 
+            {
+                if (value != null)
+                {
+                    _soundPocketExists = true;
+                }
+                else
+                {
+                    _soundPocketExists = false;
+                }
+
+                _soundPocketPrefab = value;
+            }
+        }
+
+        protected bool _soundPocketMethodsCanExecuted = true;
         protected bool _soundPocketExists = false;
 
         #region Handlers
@@ -125,7 +143,7 @@ namespace Lineri.SoundSystem
             SetVariables();
         }
 
-        #region logic
+        #region Logic
         protected enum _methods
         {
             Play,
@@ -202,5 +220,10 @@ namespace Lineri.SoundSystem
             }
         }
         #endregion
+
+        protected virtual void OnValidate()
+        {
+            SoundPocketPrefab = _soundPocketPrefab;
+        }
     }
 }
