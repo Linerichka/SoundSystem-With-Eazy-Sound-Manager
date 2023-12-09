@@ -4,38 +4,41 @@ namespace Lineri.SoundSystem
 {
     public abstract class SoundPocketManager : MonoBehaviour
     {
-        [SerializeField] protected GameObject _soundPocket;
-
-        //deprecated, use SoundPocketPrefab instead
-        [SerializeField] protected GameObject _soundPocketPrefab;
-        protected GameObject SoundPocketPrefab {
-            get { return _soundPocketPrefab; }
-            set 
+        [SerializeField] private GameObject _soundPocket;
+        protected GameObject SoundPocket
+        {
+            get => _soundPocket;
+            set
             {
-                if (value != null)
-                {
-                    _soundPocketExists = true;
-                }
-                else
-                {
-                    _soundPocketExists = false;
-                }
+                if (value != null) _soundPocketExists = true;
+                else _soundPocketExists = false;
 
                 _soundPocketPrefab = value;
             }
         }
 
+        [SerializeField] private GameObject _soundPocketPrefab;
+        protected GameObject SoundPocketPrefab 
+        { 
+           get => _soundPocketPrefab;
+           set => _soundPocketPrefab = value;
+        }
+
         protected bool _soundPocketMethodsCanExecuted = true;
+        //object SoundPocket has been created and is ready for use
         protected bool _soundPocketExists = false;
 
         #region Handlers
+        /// <summary>
+        /// Use to start playback
+        /// </summary>
         protected virtual void PlayHandler()
         {
             SortThroughSoundPocketAndChek(_methods.Play);
         }
 
         /// <summary>
-        ///  Use this if you need to reset the queue of clips in SoundPockets.
+        /// Use this if you need to reset the queue of clips in SoundPockets.
         /// </summary>
         protected virtual void ResetQueueHandler()
         {
@@ -83,7 +86,7 @@ namespace Lineri.SoundSystem
         /// Set the argument to false to only ignore function calls, without disabling SoundPocket.
         /// </param>
         /// </summary>
-        protected virtual void OffSoundPocketHandler(bool disableSoundPocket = true)
+        protected virtual void OffSoundPocketHandler(in bool disableSoundPocket = true)
         {
             _soundPocketMethodsCanExecuted = false;
 
@@ -91,10 +94,7 @@ namespace Lineri.SoundSystem
 
             SortThroughSoundPocketAndChek(_methods.PlayClipsSetOff, true);
 
-            if (_soundPocketExists)
-            {
-                _soundPocket.SetActive(false);
-            }
+            if (_soundPocketExists) _soundPocket.SetActive(false);          
         }
 
 
@@ -103,10 +103,7 @@ namespace Lineri.SoundSystem
             _soundPocketMethodsCanExecuted = true;
             SortThroughSoundPocketAndChek(_methods.PlayClipsSetOn, true);
 
-            if (_soundPocketExists)
-            {
-                _soundPocket.SetActive(true);
-            }
+            if (_soundPocketExists) _soundPocket.SetActive(true);        
         }
 
         /// <summary>
@@ -116,14 +113,7 @@ namespace Lineri.SoundSystem
         /// <returns>Instantiate().gameObject</returns>
         protected virtual GameObject CreateSoundPocketHandler()
         {
-            if (_soundPocketPrefab == null)
-            {
-                Debug.LogWarning("_soundPocketPrefab not set", gameObject);
-                return null;
-            }
-
             _soundPocketExists = true;
-
             return _soundPocket = Instantiate(_soundPocketPrefab, transform);
         }
 
@@ -138,7 +128,7 @@ namespace Lineri.SoundSystem
         }
         #endregion
 
-        protected virtual void Start()
+        protected virtual void Awake()
         {
             SetVariables();
         }
@@ -161,7 +151,7 @@ namespace Lineri.SoundSystem
         /// If the argument is set to true, the action will be executed even when methods cannot be called.
         /// </param>
         /// </summary>
-        protected virtual void SortThroughSoundPocketAndChek(_methods method, bool ignoreSoundPocketMethodsCanExecuted = false)
+        protected virtual void SortThroughSoundPocketAndChek(in _methods method, in bool ignoreSoundPocketMethodsCanExecuted = false)
         {
             if (!_soundPocketMethodsCanExecuted && !ignoreSoundPocketMethodsCanExecuted) return;
 
@@ -223,6 +213,7 @@ namespace Lineri.SoundSystem
 
         protected virtual void OnValidate()
         {
+            SoundPocket = _soundPocket;
             SoundPocketPrefab = _soundPocketPrefab;
         }
     }
