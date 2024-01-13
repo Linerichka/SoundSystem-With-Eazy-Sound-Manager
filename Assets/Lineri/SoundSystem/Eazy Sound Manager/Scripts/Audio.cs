@@ -287,7 +287,6 @@ namespace Lineri.SoundSystem
             /// Initialize values
             /// Use private fields for setting to prevent parameters from being applied to the AudioSource
             this.AudioSource = audioSource;
-            this._volume = Mathf.Clamp01(volume);
             this.Type = audioType;
             this.Clip = clip;
             this.SourceTransform = sourceTransform;
@@ -377,23 +376,23 @@ namespace Lineri.SoundSystem
             }
 
             // Increase/decrease volume to reach the current target
-            if (Volume != _targetVolume)
+            if (!Mathf.Approximately(Volume, _targetVolume))
             {
                 float fadeValue;
                 _fadeInterpolater += Time.unscaledDeltaTime;
 
                 if (Volume > _targetVolume)
                 {
-                    fadeValue = _tempFadeSeconds != -1 ? _tempFadeSeconds : FadeOutSeconds;
+                    fadeValue = Mathf.Approximately(_tempFadeSeconds, -1f) ? FadeOutSeconds: _tempFadeSeconds;
                 }
                 else
                 {
-                    fadeValue = _tempFadeSeconds != -1 ? _tempFadeSeconds : FadeInSeconds;
+                    fadeValue = Mathf.Approximately(_tempFadeSeconds, -1f) ? FadeInSeconds : _tempFadeSeconds;
                 }
 
                 Volume = Mathf.Lerp(_onFadeStartVolume, _targetVolume, _fadeInterpolater / fadeValue);
             }
-            else if (_tempFadeSeconds != -1)
+            else if (!Mathf.Approximately(_tempFadeSeconds, -1))
             {
                 _tempFadeSeconds = -1;
             }
@@ -419,7 +418,7 @@ namespace Lineri.SoundSystem
             }
 
             // Completely stop audio if it finished the process of stopping
-            if (Volume == 0f && Stopping)
+            if (Mathf.Approximately(Volume, 0f) && Stopping)
             {
                 AudioSource.Stop();
                 Stopping = false;

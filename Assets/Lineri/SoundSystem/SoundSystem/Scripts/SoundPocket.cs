@@ -8,7 +8,7 @@ namespace Lineri.SoundSystem
     {
         [Header("Clips setting")]
         //here Sound - all sounds \ audio clips
-        [SerializeField] private float _soundVolume = 1f;
+        [SerializeField, Range(0, 1)] private float _soundVolume = 1f;
         public float SoundVolume
         {
             get => _soundVolume;
@@ -19,22 +19,22 @@ namespace Lineri.SoundSystem
             }
         }
 
-        [SerializeField] private float _pitch = 1f;
+        [SerializeField, Range(-3, 3)] private float _pitch = 1f;
         public float Pitch
         {
             get => _pitch;
             set
             {
-                _pitch = Mathf.Clamp(value, 0f, 3);
+                _pitch = Mathf.Clamp(value, -3f, 3f);
                 UpdateParametersAllPlayingClips();
             }
         }
 
-        [SerializeField] private float _randomPitch = 0f;
+        [SerializeField, Range(0, 3)] private float _randomPitch = 0f;
         public float RandomPitch
         {
             get => _randomPitch;
-            set => _randomPitch = Mathf.Clamp(value, -3f, 3f);
+            set => _randomPitch = Mathf.Clamp(value, 0, 3f);
         }
 
         //Use the plugin documentation for these 3 variables
@@ -292,7 +292,7 @@ namespace Lineri.SoundSystem
 
         protected virtual int PlayAudioSound(AudioClip clip)
         {
-            int id = EazySoundManager.PlaySound(clip, SoundVolume, false, Transform3dAudio);
+            int id = EazySoundManager.PlaySound(clip, SoundVolume, false, PersistSoundOnSceneLoad, FadeInSecond, FadeOutSecond, Transform3dAudio);
             return id;
         }
 

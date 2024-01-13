@@ -17,7 +17,7 @@
 * Allows you to edit all the settings of a group of clips directly from the inspector.
 
 ## Using:
-You can also get acquainted with a short tutorial on the basic functions of the **SoundSystem**: <a href = "https://youtu.be/kXDuEaaw7Ao">tutorial</a>.
+You can also get acquainted with a short tutorial on the basic functions of the **SoundSystem**: <a href = "https://youtu.be/kXDuEaaw7Ao">tutorial</a>. Or use <a href = "https://github.com/Linerichka/SoundSystem-With-Eazy-Sound-Manager/blob/main/Assets/Lineri/SoundSystem/SoundSystem/Docs/Manual/EN.pdf">documentation</a> that is updated and maintained in a timely manner.
 1. Import an asset into your Unity project.
 2. Add the prefab "Sound" to the scene, which is located along the path:  "Assets/Lineri/SoundSystem/SoundSystem/Prefabs/Sound.prefab".
 3. Select the child object "SoundPocket".

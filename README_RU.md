@@ -17,7 +17,7 @@
 * Позволяет редактировать все настройки группы клипов прямо из инспектора.
 
 ## Использование:
-Вы так же можете ознакомиться коротким туториалом по базовым функциям **SoundSystem**: <a href = "https://youtu.be/kXDuEaaw7Ao">туториал</a>.
+Вы так же можете ознакомиться коротким туториалом по базовым функциям **SoundSystem**: <a href = "https://youtu.be/kXDuEaaw7Ao">туториал</a>. Или использовать <a href = "https://github.com/Linerichka/SoundSystem-With-Eazy-Sound-Manager/blob/main/Assets/Lineri/SoundSystem/SoundSystem/Docs/Manual/RU.pdf">документацию</a> которая своевременно обновляется и поддерживается.
 1. Импортировать актив в свой Unity проект.
 2. Добавить на сцену prefab "Sound" который находится по пути: "Assets/Lineri/SoundSystem/SoundSystem/Prefabs/Sound.prefab".
 3. Выбрать дочерний объект "SoundPocket".

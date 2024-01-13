@@ -47,16 +47,16 @@ MonoBehaviour:
   _soundVolume: 1
   _pitch: 1
   _randomPitch: 0
-  FadeInSecond: 2
-  FadeOutSecond: 2
+  FadeInSecond: 0
+  FadeOutSecond: 0
   CurrentMusicFadeOutSeconds: -1
+  Transform3dAudio: {fileID: 0}
   LoopClips: 1
   RandomPlayClip: 0
   PersistSoundOnSceneLoad: 0
   PlayOneClip: 0
   PlaySoundOnAwake: 1
   PlayAllClipsTogether: 0
-  Transform3dAudio: {fileID: 0}
   PlayClips: 1
   MusicClips: []
   SoundClips: []
