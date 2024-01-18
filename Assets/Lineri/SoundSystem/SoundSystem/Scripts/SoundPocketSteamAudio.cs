@@ -18,7 +18,7 @@ namespace Lineri.SoundSystem
         protected override int PlayAudioMusic(AudioClip clip)
         {
             int id = EazySoundManager.PlayMusic(clip, SoundVolume, false, PersistSoundOnSceneLoad,
-                FadeInSecond, FadeOutSecond, CurrentMusicFadeOutSeconds, Transform3dAudio, this.AudioSource);
+                FadeInSecond, FadeOutSecond, CurrentMusicFadeOut, Transform3dAudio, this.AudioSource);
             return id;
         }
         protected override int PlayAudioSound(AudioClip clip)
