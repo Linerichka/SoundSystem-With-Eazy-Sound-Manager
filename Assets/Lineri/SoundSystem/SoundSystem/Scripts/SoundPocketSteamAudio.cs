@@ -15,23 +15,19 @@ namespace Lineri.SoundSystem
             base.Play();
         }
 
-        protected override int PlayAudioMusic(AudioClip clip)
+        protected override int PlayAudioMusic(AudioClip clip, AudioSource audioSource = null)
         {
-            int id = EazySoundManager.PlayMusic(clip, SoundVolume, false, PersistSoundOnSceneLoad,
-                FadeInSecond, FadeOutSecond, CurrentMusicFadeOutSeconds, Transform3dAudio, this.AudioSource);
-            return id;
+            return base.PlayAudioMusic(clip, this.AudioSource);
         }
-        protected override int PlayAudioSound(AudioClip clip)
+        protected override int PlayAudioSound(AudioClip clip, AudioSource audioSource = null)
         {
-            int id = EazySoundManager.PlaySound(clip, SoundVolume, false, Transform3dAudio, this.AudioSource);
-            return id;
+            return base.PlayAudioSound(clip, this.AudioSource);
         }
 
-        protected override void PlayAudioFromList(bool callPlay)
+        protected override void PlayAudioFromList(in bool callPlay)
         {
-            if (!PlayClips || !_playWasCalled) return;
-            if (!Application.isFocused) return;
-            
+            if (!_playWasCalled || !PlayClips || !Application.isFocused) return;
+
             PlayClipsOneAfterTheOther(callPlay);            
         }
 

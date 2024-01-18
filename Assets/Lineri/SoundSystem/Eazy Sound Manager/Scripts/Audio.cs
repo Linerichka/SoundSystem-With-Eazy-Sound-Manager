@@ -383,13 +383,16 @@ namespace Lineri.SoundSystem
 
                 if (Volume > _targetVolume)
                 {
-                    fadeValue = Mathf.Approximately(_tempFadeSeconds, -1f) ? FadeOutSeconds: _tempFadeSeconds;
+                    fadeValue = Mathf.Approximately(_tempFadeSeconds, -1f) ? FadeOutSeconds : _tempFadeSeconds;
                 }
                 else
                 {
                     fadeValue = Mathf.Approximately(_tempFadeSeconds, -1f) ? FadeInSeconds : _tempFadeSeconds;
                 }
 
+                ///If fadeValue = 0, then the result (_fadeInterpolater / fadeValue) will be NaN.
+                ///Since both values are of the float type, an exception will not be created.
+                ///In turn, the Lerp method uses the Mathf method for the t argument.Clamp01() which in turn returns 1 if it takes a NaN.
                 Volume = Mathf.Lerp(_onFadeStartVolume, _targetVolume, _fadeInterpolater / fadeValue);
             }
             else if (!Mathf.Approximately(_tempFadeSeconds, -1))

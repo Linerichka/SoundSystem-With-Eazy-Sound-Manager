@@ -147,9 +147,7 @@ namespace Lineri.SoundSystem
         };
 
         /// <summary>
-        /// <param name="ignoreSoundPocketMethodsCanExecuted">
-        /// If the argument is set to true, the action will be executed even when methods cannot be called.
-        /// </param>
+        /// If the optional argument is true, then the action will be performed even if the methods cannot be called.
         /// </summary>
         protected virtual void SortThroughSoundPocketAndChek(in _methods method, in bool ignoreSoundPocketMethodsCanExecuted = false)
         {

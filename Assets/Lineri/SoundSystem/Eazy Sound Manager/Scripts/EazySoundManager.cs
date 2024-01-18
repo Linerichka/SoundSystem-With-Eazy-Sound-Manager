@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
+using System;
 
 namespace Lineri.SoundSystem
 {
@@ -77,7 +78,11 @@ namespace Lineri.SoundSystem
         }
         private static float _globalUISoundsVolume = 1f;
 
+        #region Oprimize
         private static Queue<AudioSource> _cachedAudioSourceOnGameobject;
+        private static Queue<(Dictionary<int, Audio>, int)> _cashedAudioForRemoveFromDictionary;
+        private static Audio[] _audioArrayForGetAudiosFast;
+        #endregion
 
         private static Dictionary<int, Audio> _musicAudio;
         private static Dictionary<int, Audio> _soundsAudio;
@@ -85,14 +90,36 @@ namespace Lineri.SoundSystem
 
         public static EazySoundManager Instance
         {
-            get => _instance;         
+            get => _instance;
             private set => _instance = value;
         }
         private static EazySoundManager _instance = null;
+        private static bool _isInitialized = false;
+
+        private EazySoundManager()
+        {
+            if (_isInitialized)
+            {
+                CatchAndProcessingException(new System.Exception("More one singlton."));
+            }
+
+            _isInitialized = true;
+        }
 
         static EazySoundManager()
         {
-            Instance = new GameObject("EazySoundManager").AddComponent<EazySoundManager>();
+            /// If the class is added to the GameObject manually, 
+            /// Unity throws an implicit content exception that does not indicate a specific problem.
+            try
+            {
+                // If the class has already been added to the object at the time of calling new GameObject(), an exception will be received.
+                Instance = new GameObject("EazySoundManager").AddComponent<EazySoundManager>();
+            }
+            catch (UnityException exception)
+            {
+                CatchAndProcessingException(exception);
+            }
+
             Instance.Init();
         }
 
@@ -105,9 +132,10 @@ namespace Lineri.SoundSystem
             _soundsAudio = new Dictionary<int, Audio>();
             _UISoundsAudio = new Dictionary<int, Audio>();
             _cachedAudioSourceOnGameobject = new Queue<AudioSource>();
+            _cashedAudioForRemoveFromDictionary = new Queue<(Dictionary<int, Audio>, int)>();
+            _audioArrayForGetAudiosFast = new Audio[100];
 
             DontDestroyOnLoad(this);
-
         }
 
         private void OnEnable()
@@ -137,6 +165,7 @@ namespace Lineri.SoundSystem
 
         private void Update()
         {
+            DeleteAudioFromDictionary();
             UpdateAllAudio(_musicAudio);
             UpdateAllAudio(_soundsAudio);
             UpdateAllAudio(_UISoundsAudio);
@@ -198,12 +227,9 @@ namespace Lineri.SoundSystem
             if (!Application.isFocused) return;
 
             // Go through all audios and update them
-            int[] keys = new int[audioDict.Keys.Count];
-            audioDict.Keys.CopyTo(keys, 0);
-
-            foreach (int key in keys)
+            foreach (KeyValuePair<int, Audio> pair in audioDict)
             {
-                Audio audio = audioDict[key];
+                Audio audio = pair.Value;
 
                 if (audio.Paused) continue;
 
@@ -212,10 +238,11 @@ namespace Lineri.SoundSystem
                 // Remove it if it is no longer active (playing)
                 if (audio.IsPlaying || audio.Paused) continue;
 
-                DeleteAudio(audio, audioDict, key);
+                DeleteAudio(audio, audioDict, pair.Key);
             }
         }
 
+        #region Delete and remove Audio
         /// <summary>
         /// Remove all non-persistant audios from an audio dictionary
         /// </summary>
@@ -223,16 +250,13 @@ namespace Lineri.SoundSystem
         private static void RemoveNonPersistAudio(Dictionary<int, Audio> audioDict)
         {
             // Go through all audios and remove them if they should not persist through scenes
-            int[] keys = new int[audioDict.Keys.Count];
-            audioDict.Keys.CopyTo(keys, 0);
-
-            foreach (int key in keys)
+            foreach (KeyValuePair<int, Audio> pair in audioDict)
             {
-                Audio audio = audioDict[key];
+                Audio audio = pair.Value;
 
                 if (audio.Persist && !audio.Activated) continue;
 
-                DeleteAudio(audio, audioDict, key);
+                DeleteAudio(audio, audioDict, pair.Key);
             }
         }
 
@@ -252,24 +276,43 @@ namespace Lineri.SoundSystem
             }
 
             audio.Delete();
-            audioDict.Remove(key);
+            DeleteAudioFromDictionary(audioDict, key);
         }
 
+        /// <summary>
+        /// Adding the dictionary and id to the queue.
+        /// </summary>
+        private static void DeleteAudioFromDictionary(Dictionary<int, Audio> audioDict, in int key)
+        {
+            _cashedAudioForRemoveFromDictionary.Enqueue((audioDict, key));
+        }
+
+        /// <summary>
+        /// Clear the queue and delete from the dictionaries all the items that are in this queue.
+        /// </summary>
+        private static void DeleteAudioFromDictionary()
+        {
+            while (_cashedAudioForRemoveFromDictionary.TryDequeue(out (Dictionary<int, Audio>, int) cashedAudioForRemove))
+            {
+                cashedAudioForRemove.Item1.Remove(cashedAudioForRemove.Item2);
+            }
+        }
+
+        /// <summary>
+        /// Clear the AudioSource queue and delete the AudioSource if they do not contain a clip.
+        /// </summary>
         private static void DeleteUnusedAudioSource()
         {
-            AudioSource[] audioSources = Gameobject.GetComponents<AudioSource>();
-
-            foreach (AudioSource audioSource in audioSources)
+            while (_cachedAudioSourceOnGameobject.TryDequeue(out AudioSource audioSource))
             {
                 if (audioSource.clip != null) continue;
 
                 Destroy(audioSource);
             }
-
-            _cachedAudioSourceOnGameobject.Clear();
         }
-        #region GetAudio Functions
+        #endregion
 
+        #region GetAudio Functions
         /// <summary>
         /// Returns the Audio that has as its id the audioID if one is found, returns null if no such Audio is found
         /// </summary>
@@ -391,6 +434,47 @@ namespace Lineri.SoundSystem
             return null;
         }
 
+        /// <summary>
+        /// EXPERIMENTAL! It allows you to get an Audio array much faster than if it were done in the usual way.
+        /// Accepts Predicate<Audio>, all Audio for which true will be returned will be added to the result.
+        /// </summary>
+        public static Audio[] GetAudiosFast(Predicate<Audio> Compare)
+        {
+            int lastIndex = -1;
+            ref var result = ref _audioArrayForGetAudiosFast;
+            int maxClipCount = (GetAudioTypeDictionary(Audio.AudioType.Music).Count +
+                GetAudioTypeDictionary(Audio.AudioType.Sound).Count +
+                GetAudioTypeDictionary(Audio.AudioType.UISound).Count);           
+            
+            if (result.Length <= maxClipCount)
+            {
+                result = new Audio[maxClipCount * 2];
+            }
+
+            CompareAllAudioIfCorrectAddArray(Audio.AudioType.Music, Compare, ref result, ref lastIndex);
+            CompareAllAudioIfCorrectAddArray(Audio.AudioType.Sound, Compare, ref result, ref lastIndex);
+            CompareAllAudioIfCorrectAddArray(Audio.AudioType.UISound, Compare, ref result, ref lastIndex);
+
+            Audio[] resultNoNull = new Audio[(lastIndex + 1)];
+            Array.Copy(result, 0, resultNoNull, 0, lastIndex + 1);
+
+            return resultNoNull;
+        }
+
+        private static void CompareAllAudioIfCorrectAddArray(in Audio.AudioType audioType, Predicate<Audio> Compare,
+            ref Audio[] result, ref int lastIndex)
+        {
+            Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
+
+            foreach (Audio audio in audioDict.Values)
+            {
+                if (Compare(audio))
+                {
+                    lastIndex++;
+                    result[lastIndex] = audio;
+                }
+            }
+        }
         #endregion
 
         #region Prepare Function
@@ -580,7 +664,7 @@ namespace Lineri.SoundSystem
         {
             if (clip == null)
             {
-                throw new System.Exception("[Eazy Sound Manager] Audio clip is null");
+                CatchAndProcessingException(new System.Exception("[Eazy Sound Manager] Audio clip is null"));
             }
 
             if (GetAudioTypeIgnoreDuplicateSetting(audioType))
@@ -590,14 +674,16 @@ namespace Lineri.SoundSystem
                 if (duplicateAudio != null) return duplicateAudio.AudioID;
             }
 
+            // code: 0.2.2.0 02  |  It is possible to exclude resource-intensive verification
             bool sourceNull = audioSource == null;
-            // Create the audioSource
+
+            // code: 0.2.2.0 01  |  Allocates a huge amount of garbage
             Audio audio = new Audio(
-                audioType: audioType, clip, loop, persist, volume, fadeInSeconds, fadeOutSeconds,
+                audioType, clip, loop, persist, volume, fadeInSeconds, fadeOutSeconds,
                 sourceTransform == null ? Gameobject.transform : sourceTransform,
                 sourceNull ? GetAudioSource(sourceTransform) : audioSource,
                 sourceNull
-                );
+                ); 
 
             // Add it to dictionary
             Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
@@ -606,6 +692,10 @@ namespace Lineri.SoundSystem
             return audio.AudioID;
         }
 
+        /// <summary>
+        /// If the Transform for playing clips is not set or it is Gameobject.transform, 
+        /// then check if the created AudioSource is available and return it, otherwise create a new one and return it.
+        /// </summary>
         private static AudioSource GetAudioSource(Transform sourceTransform)
         {
             if (sourceTransform == null || sourceTransform == Gameobject.transform)
@@ -813,7 +903,7 @@ namespace Lineri.SoundSystem
             in float fadeInSeconds, in float fadeOutSeconds, in float currentMusicfadeOutSeconds, Transform sourceTransform, AudioSource audioSource = null)
         {
             // Stop all current music playing
-            if (audioType == Audio.AudioType.Music && OnlyOnePlayableMusicClip)
+            if (OnlyOnePlayableMusicClip && audioType == Audio.AudioType.Music)
             {
                 StopAllMusic(currentMusicfadeOutSeconds);
             }
@@ -982,11 +1072,26 @@ namespace Lineri.SoundSystem
         {
             Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
 
-            foreach (Audio audio in audioDict.Values)
-            {
-                audio.UnPause();
-            }
+            foreach (Audio audio in audioDict.Values) audio.UnPause();
         }
         #endregion
+
+        private static void CatchAndProcessingException(System.Exception exception)
+        {
+            if (exception.Message.Contains("Internal_CreateGameObject is not allowed"))
+            {
+                throw new System.Exception("Do not try to assign EazySoundManager to GameObject. " +
+                    "Delete all instances of EazySoundManager that are created in such a way as to fix the exception.\n" +
+                exception.Message);
+            }
+            else if (exception.Message.Contains("More one singlton."))
+            {
+                throw new System.Exception("Do not try to manually create new instances of the " +
+                    "Eazy Sound System by adding to the GameObject at runtime. " +
+                    "Make sure that no additional instances are created anywhere.\n" +
+                    exception.Message);
+            }
+            else throw exception;
+        }
     }
 }

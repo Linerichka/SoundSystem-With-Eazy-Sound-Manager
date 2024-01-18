@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using AudioType = Lineri.SoundSystem.Audio.AudioType;
@@ -7,7 +8,7 @@ namespace Lineri.SoundSystem
     public class SoundPocket : MonoBehaviour
     {
         [Header("Clips setting")]
-        //here Sound - all sounds \ audio clips
+        // Here Sound - all sounds \ audio clips
         [SerializeField, Range(0, 1)] private float _soundVolume = 1f;
         public float SoundVolume
         {
@@ -15,7 +16,7 @@ namespace Lineri.SoundSystem
             set
             {
                 _soundVolume = Mathf.Clamp(value, 0f, 1);
-                UpdateParametersAllPlayingClips();
+                UpdateParametersAllPlayingClips(_typeUpdate.Volume);
             }
         }
 
@@ -26,7 +27,7 @@ namespace Lineri.SoundSystem
             set
             {
                 _pitch = Mathf.Clamp(value, -3f, 3f);
-                UpdateParametersAllPlayingClips();
+                UpdateParametersAllPlayingClips(_typeUpdate.Pitch);
             }
         }
 
@@ -37,11 +38,48 @@ namespace Lineri.SoundSystem
             set => _randomPitch = Mathf.Clamp(value, 0, 3f);
         }
 
-        //Use the plugin documentation for these 3 variables
-        public float FadeInSecond = 2f;
-        public float FadeOutSecond = 2f;
+        // Use the plugin documentation for these 3 variables
+        [SerializeField] private float _fadeInSecond = 0f;
+        public float FadeInSecond
+        {
+            get => _fadeInSecond;
+            set
+            {
+                if (value < 0f) _fadeInSecond = 0f;
+                else _fadeInSecond = value;
+            }
+        }
+        [SerializeField] private float _fadeOutSecond = 0f;
+        public float FadeOutSecond
+        {
+            get => _fadeOutSecond;
+            set
+            {
+                if (value < 0f) _fadeOutSecond = 0f;
+                else _fadeOutSecond = value;
+            }
+        }
+
+        [System.Obsolete("Use 'CurrentMusicFadeOut' instead.")]
         public float CurrentMusicFadeOutSeconds = -1f;
+        public float CurrentMusicFadeOut
+        {
+#pragma warning disable CS0618
+            get => CurrentMusicFadeOutSeconds;
+            set
+            {
+                if (Mathf.Approximately(-1f, value)) CurrentMusicFadeOutSeconds = -1f;
+                else if (value < 0f) CurrentMusicFadeOutSeconds = 0f;
+                else CurrentMusicFadeOutSeconds = value;
+            }
+#pragma warning restore CS0618
+        }
         //
+        // If true, then fade in applies only to the first clip in the queue
+        public bool FadeInFirstClipInQueue = false;
+        /// If true, fade in applies only to the clip that is played after calling the Play method from outside. 
+        /// Also, if Loop is set to True, then fade in will not be applied to the first clip when the queue is repeated.
+        public bool FadeInClipAfterCallPlay = false;
         // Use the plugin documentation for 3d audio AND set null to not use 3D sound
         public Transform Transform3dAudio = null;
 
@@ -55,7 +93,7 @@ namespace Lineri.SoundSystem
         /// continues the sound that is played at the moment of the scene change,
         /// audio queue won't play if the current class is not in DontDestroyOnLoad
         public bool PersistSoundOnSceneLoad = false;
-        //when called, Play plays one clip instead of the entire chain. ignores LoopClips
+        // When called, Play plays one clip instead of the entire chain. ignores LoopClips
         public bool PlayOneClip = false;
         // Play all clips at the start
         public bool PlaySoundOnAwake = false;
@@ -69,19 +107,29 @@ namespace Lineri.SoundSystem
         public List<AudioClip> SoundClips = new List<AudioClip>();
         public List<AudioClip> SoundUiClips = new List<AudioClip>();
 
-        #region private variables
+        #region CallBacks
+        public event Action OnClipsQueuePlayedStart;
+        // Called only if PlayAllClipsTogether = false
+        public event Action OnClipPlayedStart;
+        // It can be called repeatedly
+        public event Action ClipsQueueEnded;
+        public event Action ClipsQueueReset;
+        #endregion
+        #region Private variables
         //if Start() was called earlier - true, if not - false
-        private bool _startInvoked = false; 
+        private bool _startInvoked = false;
         //true if the clips were called to play together
-        private bool _clipsTogetherPlayCalled; 
+        private bool _clipsTogetherPlayCalled;
         private int _numberClipPlayedInList = 0;
         protected bool _playWasCalled = false;
-        #region to optimize GetAudioFromClips()
-        private List<Audio> _audioFromClips;
+        #region To optimize GetAudioFromClips()
+        private List<Audio> _audioFromClips = new();
+        private List<Audio> _audiosResultGetAudio = new();
         private bool _listsClipsChanged = false;
         #endregion
         //use it to force new clips to start, even if the clips are already being played
         private bool _ignorePlayingCurrentClips = false;
+        private bool _callPlay = true;
         #endregion
 
         protected virtual void Start()
@@ -92,7 +140,7 @@ namespace Lineri.SoundSystem
 
         private void Update()
         {
-            PlayAudioFromList(false);           
+            PlayAudioFromList(false);
         }
 
         #region Public void
@@ -108,17 +156,15 @@ namespace Lineri.SoundSystem
 
         public void ResetClipQueue()
         {
+            ClipsQueueReset?.Invoke();
             _numberClipPlayedInList = 0;
             _clipsTogetherPlayCalled = false;
         }
 
         public void StopClipsPlayning()
         {
-            foreach (Audio audio in GetAudioFromClips())
-            {
-                audio.Stop();
-            }
-            
+            foreach (Audio audio in GetAudioFromClips()) audio.Stop();
+
             PlayClips = false;
 
             ResetClipQueue();
@@ -126,62 +172,73 @@ namespace Lineri.SoundSystem
 
         public void PauseClipsPlayning()
         {
-            foreach (Audio audio in GetAudioFromClips())
-            {
-                audio.Pause();
-            }
+            foreach (Audio audio in GetAudioFromClips()) audio.Pause();
         }
 
         public void UnPauseClipsPlayning()
         {
-            foreach (Audio audio in GetAudioFromClips())
-            {
-                audio.UnPause();
-            }
+            foreach (Audio audio in GetAudioFromClips()) audio.UnPause();
         }
 
         public void ResetTimeClipsPlayed()
         {
             _ignorePlayingCurrentClips = true;
         }
-        #endregion
 
         /// <summary>
-        /// Update the parameters of the clips that are currently playing (pitch, volume ...)
+        /// Sets the volume instantly, ignoring the Fade In and Fade Out values.
         /// </summary>
-        private void UpdateParametersAllPlayingClips()
+        public void SetVolumeInstantly()
+        {
+            foreach (Audio audio in GetAudioFromClips()) audio.SetVolume(SoundVolume, 0f);
+        }
+        #endregion
+
+        private enum _typeUpdate
+        {
+            All,
+            Volume,
+            Pitch
+        }
+
+        /// <summary>
+        /// Update the parameters of the clips that are currently playing (pitch, volume).
+        /// </summary>
+        private void UpdateParametersAllPlayingClips(in _typeUpdate typeUpdate)
         {
             if (!(Application.isPlaying && _startInvoked)) return;
             if (EazySoundManager.Gameobject == null) return;
 
             foreach (Audio audio in GetAudioFromClips())
             {
-                audio.SetVolume(SoundVolume);
-                audio.Pitch = Pitch;
+                if (typeUpdate == _typeUpdate.All)
+                {
+                    audio.SetVolume(SoundVolume);
+                    audio.Pitch = Pitch;
+                    continue;
+                }
+                else if (typeUpdate == _typeUpdate.Volume) audio.SetVolume(SoundVolume);
+                else if (typeUpdate == _typeUpdate.Pitch) audio.Pitch = Pitch;
             }
         }
-       
-        #region PlayClip
-        protected virtual void PlayAudioFromList(bool callPlay)
-        {
-            if (!PlayClips || !_playWasCalled) return;
-            if (!Application.isFocused) return;
 
-            if (PlayAllClipsTogether)
-            {
-                PlayAllClipsInListTogether(callPlay);
-            }
-            else
-            {
-                PlayClipsOneAfterTheOther(callPlay);
-            }
+        #region PlayClip
+        protected virtual void PlayAudioFromList(in bool callPlay)
+        {
+            if (!_playWasCalled || !PlayClips || !Application.isFocused) return;
+
+            if (PlayAllClipsTogether) PlayAllClipsInListTogether(callPlay);        
+            else PlayClipsOneAfterTheOther(callPlay);          
         }
 
         #region Play Together
-        private void PlayAllClipsInListTogether(bool callPlay)
+        private void PlayAllClipsInListTogether(in bool callPlay)
         {
             if (!((_clipsTogetherPlayCalled && LoopClips) || callPlay)) return;
-            if (!PlaybackOfClipsIsComplete()) return;           
+            if (!PlaybackOfClipsIsComplete()) return;
+            else if (callPlay) OnClipsQueuePlayedStart?.Invoke();
+
+            _callPlay = callPlay;
 
             PlayAllClipsInList(MusicClips, AudioType.Music);
             PlayAllClipsInList(SoundClips, AudioType.Sound);
@@ -190,7 +247,7 @@ namespace Lineri.SoundSystem
             _clipsTogetherPlayCalled = true;
         }
 
-        private void PlayAllClipsInList(List<AudioClip> listClips, AudioType AudioType)
+        private void PlayAllClipsInList(List<AudioClip> listClips, in AudioType AudioType)
         {
             foreach (AudioClip clip in listClips)
             {
@@ -198,7 +255,7 @@ namespace Lineri.SoundSystem
             }
         }
 
-        private int PlayClipInListTogether(AudioClip clip, AudioType AudioType)
+        private int PlayClipInListTogether(AudioClip clip, in AudioType AudioType)
         {
             int id = PlayAudio(clip, AudioType);
             float clipPitch = Pitch + UnityEngine.Random.Range(-RandomPitch, RandomPitch);
@@ -209,30 +266,31 @@ namespace Lineri.SoundSystem
         #endregion
 
         #region Play One After The Other
-        protected void PlayClipsOneAfterTheOther(bool callPlay)
+        protected void PlayClipsOneAfterTheOther(in bool callPlay)
         {
-            if (!(MusicClips.Count > _numberClipPlayedInList || 
-                SoundClips.Count > _numberClipPlayedInList || 
+            if (!(MusicClips.Count > _numberClipPlayedInList ||
+                SoundClips.Count > _numberClipPlayedInList ||
                 SoundUiClips.Count > _numberClipPlayedInList))
             {
-                if (LoopClips || callPlay)
-                {
-                    ResetClipQueue();
-                }
+                if (LoopClips || callPlay) ResetClipQueue();
             }
 
             if (!PlaybackOfClipsIsComplete() || (!callPlay && PlayOneClip))
             {
                 return;
             }
-           
+            else if (callPlay) OnClipsQueuePlayedStart?.Invoke();
+
+            OnClipPlayedStart?.Invoke();
+            _callPlay = callPlay;
+
             if (MusicClips.Count > _numberClipPlayedInList)
             {
                 PlayClipInList(MusicClips, AudioType.Music);
             }
 
             if (SoundClips.Count > _numberClipPlayedInList)
-            {                
+            {
                 PlayClipInList(SoundClips, AudioType.Sound);
             }
 
@@ -244,22 +302,16 @@ namespace Lineri.SoundSystem
             _numberClipPlayedInList++;
         }
 
-        private int PlayClipInList(List<AudioClip> clips, AudioType AudioType)
+        private int PlayClipInList(List<AudioClip> clips, in AudioType AudioType)
         {
             int clipNumber;
 
-            if (RandomPlayClip)
-            {
-                clipNumber = UnityEngine.Random.Range(0, clips.Count);
-            }
-            else
-            {
-                clipNumber = _numberClipPlayedInList;
-            }
+            if (RandomPlayClip) clipNumber = UnityEngine.Random.Range(0, clips.Count);         
+            else clipNumber = _numberClipPlayedInList;           
 
-             int id  = PlayAudio(clips[clipNumber], AudioType);
-             float clipPitch = Pitch + UnityEngine.Random.Range(-RandomPitch, RandomPitch);
-             EazySoundManager.GetAudio(id, AudioType).Pitch = clipPitch;
+            int id = PlayAudio(clips[clipNumber], AudioType);
+            float clipPitch = Pitch + UnityEngine.Random.Range(-RandomPitch, RandomPitch);
+            EazySoundManager.GetAudio(id, AudioType).Pitch = clipPitch;
 
             return id;
         }
@@ -279,21 +331,39 @@ namespace Lineri.SoundSystem
                     unchecked
                     {
                         return (int)Mathf.NegativeInfinity;
-                    }                                               
+                    }
             }
         }
 
-        protected virtual int PlayAudioMusic(AudioClip clip)
+        protected virtual int PlayAudioMusic(AudioClip clip, AudioSource audioSource = null)
         {
-            int id = EazySoundManager.PlayMusic(clip, SoundVolume, false, PersistSoundOnSceneLoad, 
-                FadeInSecond, FadeOutSecond, CurrentMusicFadeOutSeconds, Transform3dAudio);
+            int id = EazySoundManager.PlayMusic(clip, SoundVolume, false, PersistSoundOnSceneLoad,
+                FadeInCanSet() ? FadeInSecond : 0f,
+                FadeOutSecond, CurrentMusicFadeOut, Transform3dAudio, audioSource);
             return id;
         }
 
-        protected virtual int PlayAudioSound(AudioClip clip)
+        protected virtual int PlayAudioSound(AudioClip clip, AudioSource audioSource = null)
         {
-            int id = EazySoundManager.PlaySound(clip, SoundVolume, false, PersistSoundOnSceneLoad, FadeInSecond, FadeOutSecond, Transform3dAudio);
+            int id = EazySoundManager.PlaySound(clip, SoundVolume, false, PersistSoundOnSceneLoad,
+                FadeInCanSet() ? FadeInSecond : 0f, 
+                FadeOutSecond, Transform3dAudio, audioSource);
             return id;
+        }
+
+        /// <summary>
+        /// If there are no conditions prohibiting setting Fade In for the clip, then returns True.
+        /// </summary>
+        private bool FadeInCanSet()
+        {
+            // Ñheck whether we can apply fade in to the clip in normal mode if there are no forbidding conditions
+            bool canApplyFadeInToClip = (!FadeInFirstClipInQueue && !FadeInClipAfterCallPlay);
+            // Check whether we can apply fade in to the clip if it is the first in the queue and the conditions allow
+            bool canApplyFadeInToFirstClip = (FadeInFirstClipInQueue && _numberClipPlayedInList == 0 && !PlayAllClipsTogether);
+            // Check whether we can apply fade in to the clip if it is playing after calling Play.
+            bool canApplyFadeInBecausePlayningClipAfterCallPlay = (FadeInClipAfterCallPlay && _callPlay);
+            bool fadeInSet = (canApplyFadeInToFirstClip || canApplyFadeInBecausePlayningClipAfterCallPlay || canApplyFadeInToClip);
+            return fadeInSet;
         }
 
         protected virtual int PlayAudioUISound(AudioClip clip)
@@ -304,6 +374,9 @@ namespace Lineri.SoundSystem
         #endregion
 
         #region Get Audio list
+        /// <summary>
+        /// Returns Audio of the current clips.
+        /// </summary>
         private List<Audio> GetAudioFromClips()
         {
             ///if _audioFromClips corresponds to what can be obtained using GetAudioFromClips(),
@@ -313,22 +386,23 @@ namespace Lineri.SoundSystem
                 return _audioFromClips;
             }
 
-            List<Audio> audios = new List<Audio>();
+            _audiosResultGetAudio.Clear();
 
-
-            for (int i = 0; i < Mathf.Max(MusicClips.Count, SoundClips.Count, SoundUiClips.Count); i++)
+            for (int i = 0; i < Mathf.Max(MusicClips.Count, Mathf.Max(SoundClips.Count, SoundUiClips.Count)); i++)
             {
-                GetAudioByIndexAndAddToList(audios, i, AudioType.Music);
-                GetAudioByIndexAndAddToList(audios, i, AudioType.Sound);
-                GetAudioByIndexAndAddToList(audios, i, AudioType.UISound);
+                GetAudioByIndexAndAddToList(_audiosResultGetAudio, i, AudioType.Music);
+                GetAudioByIndexAndAddToList(_audiosResultGetAudio, i, AudioType.Sound);
+                GetAudioByIndexAndAddToList(_audiosResultGetAudio, i, AudioType.UISound);
             }
 
-            _audioFromClips = audios;
+            _audioFromClips = _audiosResultGetAudio;
 
-            return audios;
+            return _audiosResultGetAudio;
         }
 
-        //adds clips to the assigned list, also returns false if the clip was not added, true if added
+        /// <summary>
+        /// Adds clips to the assigned list, also returns false if the clip was not added, true if added
+        /// </summary>
         private bool GetAudioByIndexAndAddToList(List<Audio> audios, in int i, in AudioType AudioType)
         {
             List<AudioClip> clips;
@@ -367,25 +441,30 @@ namespace Lineri.SoundSystem
             return true;
         }
 
-        #region 
-        //returns true if the list stores all current clips
+        #region Cheking changes
+        /// <summary>
+        /// Returns true if the list stores all current clips
+        /// </summary>
         private bool CheckAudioFromClipsChangesAndForRelevance()
         {
-            if (_audioFromClips == null) return false;
-            if (_audioFromClips.Count == 0) return false;
-            if (!ChekListClipsChanged()) return false;
+            int audioCount = _audioFromClips.Count;
 
-            foreach (Audio audio in _audioFromClips)
+            if (audioCount == 0 || !ChekListClipsChanged()) return false;
+
+            for (int i = 0; i < audioCount; i++)
             {
-                if (audio == null) return false;
-                if (audio.Deleted) return false;
+                Audio audio = _audioFromClips[i];
+
+                if (audio == null || audio.Deleted) return false;
             }
 
             return true;
         }
 
 
-        //returns true if the clips have not been modified
+        /// <summary>
+        /// Returns true if the clips have not been modified
+        /// </summary>
         private bool ChekListClipsChanged()
         {
             if (_listsClipsChanged)
@@ -393,40 +472,42 @@ namespace Lineri.SoundSystem
                 _listsClipsChanged = false;
                 return false;
             }
-            else
-            {
-                return true;
-            }
+            else return true;
         }
         #endregion
         #endregion
 
-        //if there are no more active clips returns true
-        private bool PlaybackOfClipsIsComplete ()
+        /// <summary>
+        /// If the clips are no longer playing, returns true.
+        /// If there is at least one clip that is being played, it returns false.
+        /// </summary>
+        private bool PlaybackOfClipsIsComplete()
         {
-            List<Audio> audios = GetAudioFromClips();
-
             if (_ignorePlayingCurrentClips)
             {
                 _ignorePlayingCurrentClips = false;
+                ClipsQueueEnded?.Invoke();
                 return true;
             }
 
-            foreach (Audio audio in audios)
+            List<Audio> audios = GetAudioFromClips();
+            int audioCount = audios.Count;
+
+            for (int i = 0; i < audioCount; i++)
             {
-                if (audio != null && !audio.Deleted)
-                {
-                    return false;
-                }
+                Audio audio = audios[i];
+                if (audio != null && !audio.Deleted) return false;
             }
 
+
+            ClipsQueueEnded?.Invoke();
             return true;
         }
 
         private void PlayOnAwakeningIfConditionIsMet()
         {
-            if (!PlaySoundOnAwake) return;   
-            
+            if (!PlaySoundOnAwake) return;
+
             Play();
         }
 
@@ -438,9 +519,12 @@ namespace Lineri.SoundSystem
             _startInvoked = true;
         }
 
+        /// <summary>
+        /// Returns true if clips are installed.
+        /// If the clips are not set, it calls gameObject.SetActive(false) and returns false.
+        /// </summary>
         private bool CheñkInstalledClipsAndDisableIfNotInstalled()
         {
-            // returns true if clips are installed, false otherwise
             if (MusicClips.Count == 0 &&
                 SoundClips.Count == 0 &&
                 SoundUiClips.Count == 0)
@@ -456,15 +540,20 @@ namespace Lineri.SoundSystem
             }
         }
 
-        #region editor only
+        #region Editor only
         /// <summary>
         /// Setting values of public variables from the inspector
         /// </summary>
         protected virtual void OnValidate()
-        {          
+        {
             SoundVolume = _soundVolume;
             Pitch = _pitch;
             RandomPitch = _randomPitch;
+            FadeInSecond = _fadeInSecond;
+            FadeOutSecond = _fadeOutSecond;
+#pragma warning disable CS0618
+            CurrentMusicFadeOut = CurrentMusicFadeOutSeconds;
+#pragma warning restore CS0618
             _listsClipsChanged = true;
         }
         #endregion
