@@ -426,46 +426,51 @@ namespace Lineri.SoundSystem
 
             foreach (Audio audio in audioDict.Values)
             {
-                if (audio == null) continue;
-
                 if (audio.Clip == audioClip) return audio;
             }
 
             return null;
         }
 
+        #region Get Audios Fast
         /// <summary>
         /// EXPERIMENTAL! It allows you to get an Audio array much faster than if it were done in the usual way.
         /// Accepts Predicate<Audio>, all Audio for which true will be returned will be added to the result.
         /// </summary>
         public static Audio[] GetAudiosFast(Predicate<Audio> Compare)
         {
-            int lastIndex = -1;
-            ref var result = ref _audioArrayForGetAudiosFast;
-            int maxClipCount = (GetAudioTypeDictionary(Audio.AudioType.Music).Count +
-                GetAudioTypeDictionary(Audio.AudioType.Sound).Count +
-                GetAudioTypeDictionary(Audio.AudioType.UISound).Count);           
-            
-            if (result.Length <= maxClipCount)
+            ref Audio[] result = ref _audioArrayForGetAudiosFast;
+
+            Dictionary<int, Audio> music = GetAudioTypeDictionary(Audio.AudioType.Music);
+            Dictionary<int, Audio> sound = GetAudioTypeDictionary(Audio.AudioType.Sound);
+            Dictionary<int, Audio> UISound = GetAudioTypeDictionary(Audio.AudioType.UISound);
+
             {
-                result = new Audio[maxClipCount * 2];
+                int maxClipCount = music.Count + sound.Count + UISound.Count;
+
+                if (result.Length <= maxClipCount)
+                {
+                    result = new Audio[maxClipCount * 2];
+                }
             }
 
-            CompareAllAudioIfCorrectAddArray(Audio.AudioType.Music, Compare, ref result, ref lastIndex);
-            CompareAllAudioIfCorrectAddArray(Audio.AudioType.Sound, Compare, ref result, ref lastIndex);
-            CompareAllAudioIfCorrectAddArray(Audio.AudioType.UISound, Compare, ref result, ref lastIndex);
+            int lastIndex = -1;
+            CompareAllAudioIfCorrectAddArray(music, Compare, ref result, ref lastIndex);
+            CompareAllAudioIfCorrectAddArray(sound, Compare, ref result, ref lastIndex);
+            CompareAllAudioIfCorrectAddArray(UISound, Compare, ref result, ref lastIndex);
 
             Audio[] resultNoNull = new Audio[(lastIndex + 1)];
-            Array.Copy(result, 0, resultNoNull, 0, lastIndex + 1);
+            for (; lastIndex > 0; lastIndex--)
+            {
+                resultNoNull[lastIndex] = result[lastIndex];
+            }
 
             return resultNoNull;
         }
 
-        private static void CompareAllAudioIfCorrectAddArray(in Audio.AudioType audioType, Predicate<Audio> Compare,
+        private static void CompareAllAudioIfCorrectAddArray(Dictionary<int, Audio> audioDict, Predicate<Audio> Compare,
             ref Audio[] result, ref int lastIndex)
         {
-            Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
-
             foreach (Audio audio in audioDict.Values)
             {
                 if (Compare(audio))
@@ -475,6 +480,7 @@ namespace Lineri.SoundSystem
                 }
             }
         }
+        #endregion
         #endregion
 
         #region Prepare Function
@@ -677,13 +683,12 @@ namespace Lineri.SoundSystem
             // code: 0.2.2.0 02  |  It is possible to exclude resource-intensive verification
             bool sourceNull = audioSource == null;
 
-            // code: 0.2.2.0 01  |  Allocates a huge amount of garbage
             Audio audio = new Audio(
                 audioType, clip, loop, persist, volume, fadeInSeconds, fadeOutSeconds,
                 sourceTransform == null ? Gameobject.transform : sourceTransform,
-                sourceNull ? GetAudioSource(sourceTransform) : audioSource,
+                sourceNull ? GetAudioSource(sourceTransform, ref sourceNull) : audioSource,
                 sourceNull
-                ); 
+                );
 
             // Add it to dictionary
             Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
@@ -696,9 +701,9 @@ namespace Lineri.SoundSystem
         /// If the Transform for playing clips is not set or it is Gameobject.transform, 
         /// then check if the created AudioSource is available and return it, otherwise create a new one and return it.
         /// </summary>
-        private static AudioSource GetAudioSource(Transform sourceTransform)
+        private static AudioSource GetAudioSource(Transform sourceTransform, ref bool sourceNull)
         {
-            if (sourceTransform == null || sourceTransform == Gameobject.transform)
+            if (sourceNull)
             {
                 AudioSource audioSource;
 
