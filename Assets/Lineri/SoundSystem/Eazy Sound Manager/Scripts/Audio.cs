@@ -218,8 +218,6 @@ namespace Lineri.SoundSystem
             UISound
         }
 
-        private static int _audioCounter = int.MinValue;
-
         private AudioClip _clip;
         private float _volume;
         private bool _loop;
@@ -232,19 +230,17 @@ namespace Lineri.SoundSystem
         private float _fadeInterpolater = 0f;
         private float _onFadeStartVolume;
 
-        public Audio(in AudioType audioType, AudioClip clip, in bool loop, in bool persist, in float volume, in float fadeInValue,
+        public Audio(in int audioID, in AudioType audioType, AudioClip clip, in bool loop, in bool persist, in float volume, in float fadeInValue,
             in float fadeOutValue, Transform sourceTransform, AudioSource audioSource, in bool overrideAudioSourceSettings = true)
         {
             // Set unique audio ID
-            AudioID = _audioCounter;
-            if (_audioCounter == int.MaxValue) ResetCounter();
-            else _audioCounter++;
+            AudioID = audioID;
 
             /// Initialize values
             /// Use private fields for setting to prevent parameters from being applied to the AudioSource
             this.AudioSource = audioSource;
             this.Type = audioType;
-            this.Clip = clip;
+            this._clip = clip;
             this.SourceTransform = sourceTransform;
             this._loop = loop;
             this.Persist = persist;
@@ -268,7 +264,7 @@ namespace Lineri.SoundSystem
         {
             if (DeleteAudioSource)
             {
-                AudioSource.clip = Clip;
+                AudioSource.clip = _clip;
                 AudioSource.loop = Loop;
                 AudioSource.mute = Mute;
                 AudioSource.volume = Volume;
@@ -286,7 +282,7 @@ namespace Lineri.SoundSystem
             //uses the current audio source settings, except for some of them
             else
             {
-                AudioSource.clip = Clip;
+                AudioSource.clip = _clip;
                 AudioSource.loop = Loop;
                 AudioSource.volume = Volume;
                 AudioSource.pitch = Pitch;
@@ -487,11 +483,6 @@ namespace Lineri.SoundSystem
             Paused = false;
             AudioSource = null;
             Deleted = true;
-        }
-
-        public static void ResetCounter()
-        {
-            _audioCounter = int.MinValue;
         }
     }
 }
