@@ -80,13 +80,12 @@ namespace Lineri.SoundSystem
 
         #region Oprimize
         private static Queue<AudioSource> _cachedAudioSourceOnGameobject;
-        private static Queue<(Dictionary<int, Audio>, int)> _cashedAudioForRemoveFromDictionary;
         private static Audio[] _audioArrayForGetAudiosFast;
         #endregion
 
-        private static Dictionary<int, Audio> _musicAudio;
-        private static Dictionary<int, Audio> _soundsAudio;
-        private static Dictionary<int, Audio> _UISoundsAudio;
+        private static ListAudio _musicAudio;
+        private static ListAudio _soundsAudio;
+        private static ListAudio _UISoundsAudio;
 
         public static EazySoundManager Instance
         {
@@ -128,12 +127,11 @@ namespace Lineri.SoundSystem
         /// </summary>
         private void Init()
         {
-            _musicAudio = new Dictionary<int, Audio>();
-            _soundsAudio = new Dictionary<int, Audio>();
-            _UISoundsAudio = new Dictionary<int, Audio>();
-            _cachedAudioSourceOnGameobject = new Queue<AudioSource>();
-            _cashedAudioForRemoveFromDictionary = new Queue<(Dictionary<int, Audio>, int)>();
-            _audioArrayForGetAudiosFast = new Audio[100];
+            _musicAudio = new ListAudio(64);
+            _soundsAudio = new ListAudio(64);
+            _UISoundsAudio = new ListAudio(64);
+            _cachedAudioSourceOnGameobject = new Queue<AudioSource>(64);
+            _audioArrayForGetAudiosFast = new Audio[64];
 
             DontDestroyOnLoad(this);
         }
@@ -165,37 +163,36 @@ namespace Lineri.SoundSystem
 
         private void Update()
         {
-            DeleteAudioFromDictionary();
             UpdateAllAudio(_musicAudio);
             UpdateAllAudio(_soundsAudio);
             UpdateAllAudio(_UISoundsAudio);
         }
 
         /// <summary>
-        /// Retrieves the audio dictionary based on the audioType
+        /// Retrieves the audio dist based on the audioType
         /// </summary>
-        /// <param name="audioType">The audio type of the dictionary to return</param>
-        /// <returns>An audio dictionary</returns>
-        private static Dictionary<int, Audio> GetAudioTypeDictionary(in Audio.AudioType audioType)
+        /// <param name="audioType">The audio type of the dist to return</param>
+        /// <returns>An audio dist</returns>
+        private static ListAudio GetAudioTypeList(in Audio.AudioType audioType)
         {
-            Dictionary<int, Audio> audioDict;
+            ListAudio listAudio;
 
             switch (audioType)
             {
                 case Audio.AudioType.Music:
-                    audioDict = _musicAudio;
+                    listAudio = _musicAudio;
                     break;
                 case Audio.AudioType.Sound:
-                    audioDict = _soundsAudio;
+                    listAudio = _soundsAudio;
                     break;
                 case Audio.AudioType.UISound:
-                    audioDict = _UISoundsAudio;
+                    listAudio = _UISoundsAudio;
                     break;
                 default:
                     return null;
             }
 
-            return audioDict;
+            return listAudio;
         }
 
         /// <summary>
@@ -219,48 +216,48 @@ namespace Lineri.SoundSystem
         }
 
         /// <summary>
-        /// Updates the state of all audios of an audio dictionary
+        /// Updates the state of all audios of an audio dist
         /// </summary>
-        /// <param name="audioDict">The audio dictionary to update</param>
-        private static void UpdateAllAudio(Dictionary<int, Audio> audioDict)
+        /// <param name="listAudio">The audio dist to update</param>
+        private static void UpdateAllAudio(ListAudio listAudio)
         {
             if (!Application.isFocused) return;
 
             // Go through all audios and update them
-            foreach (KeyValuePair<int, Audio> pair in audioDict)
+            for (int i = 0; i < listAudio.Count; i++)
             {
-                Audio audio = pair.Value;
+                Audio audio = listAudio[i];
 
-                if (audio.Paused) continue;
+                if (audio == null || audio.Paused) continue;
 
                 audio.Update();
 
                 // Remove it if it is no longer active (playing)
                 if (audio.IsPlaying || audio.Paused) continue;
 
-                DeleteAudio(audio, audioDict, pair.Key);
+                DeleteAudio(audio, listAudio, i);
             }
         }
 
         #region Delete and remove Audio
         /// <summary>
-        /// Remove all non-persistant audios from an audio dictionary
+        /// Remove all non-persistant audios from an audio dist
         /// </summary>
-        /// <param name="audioDict">The audio dictionary whose non-persistant audios are getting removed</param>
-        private static void RemoveNonPersistAudio(Dictionary<int, Audio> audioDict)
+        /// <param name="listAudio">The audio dist whose non-persistant audios are getting removed</param>
+        private static void RemoveNonPersistAudio(ListAudio listAudio)
         {
             // Go through all audios and remove them if they should not persist through scenes
-            foreach (KeyValuePair<int, Audio> pair in audioDict)
+            for (int i = 0; i < listAudio.Count; i++)
             {
-                Audio audio = pair.Value;
+                Audio audio = listAudio[i];
 
-                if (audio.Persist && !audio.Activated) continue;
+                if (audio.Persist && audio.Activated) continue;
 
-                DeleteAudio(audio, audioDict, pair.Key);
+                DeleteAudio(audio, listAudio, i);
             }
         }
 
-        private static void DeleteAudio(Audio audio, Dictionary<int, Audio> audioDict, in int key)
+        private static void DeleteAudio(Audio audio, ListAudio listAudio, in int key)
         {
             if (audio.AudioSource.transform == Gameobject.transform)
             {
@@ -276,26 +273,7 @@ namespace Lineri.SoundSystem
             }
 
             audio.Delete();
-            DeleteAudioFromDictionary(audioDict, key);
-        }
-
-        /// <summary>
-        /// Adding the dictionary and id to the queue.
-        /// </summary>
-        private static void DeleteAudioFromDictionary(Dictionary<int, Audio> audioDict, in int key)
-        {
-            _cashedAudioForRemoveFromDictionary.Enqueue((audioDict, key));
-        }
-
-        /// <summary>
-        /// Clear the queue and delete from the dictionaries all the items that are in this queue.
-        /// </summary>
-        private static void DeleteAudioFromDictionary()
-        {
-            while (_cashedAudioForRemoveFromDictionary.TryDequeue(out (Dictionary<int, Audio>, int) cashedAudioForRemove))
-            {
-                cashedAudioForRemove.Item1.Remove(cashedAudioForRemove.Item2);
-            }
+            listAudio[key] = null;
         }
 
         /// <summary>
@@ -413,22 +391,25 @@ namespace Lineri.SoundSystem
 
         private static Audio GetAudio(in Audio.AudioType audioType, in int audioID)
         {
-            Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
+            ListAudio listAudio = GetAudioTypeList(audioType);
 
-            if (!audioDict.ContainsKey(audioID)) return null;
+            if (!listAudio.Contains(audioID)) return null;
 
-            return audioDict[audioID];
+            return listAudio[audioID];
         }
 
         private static Audio GetAudio(in Audio.AudioType audioType, AudioClip audioClip)
         {
-            Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
-
-            foreach (Audio audio in audioDict.Values)
+            ListAudio listAudio = GetAudioTypeList(audioType);
+            
+            int count = listAudio.Count;
+            for (int i = 0; i < count; i++)
             {
-                if (audio.Clip == audioClip) return audio;
+                Audio audio = listAudio[i];
+                
+                if (audio != null && audio.Clip == audioClip) return audio;
             }
-
+            
             return null;
         }
 
@@ -441,9 +422,9 @@ namespace Lineri.SoundSystem
         {
             ref Audio[] result = ref _audioArrayForGetAudiosFast;
 
-            Dictionary<int, Audio> music = GetAudioTypeDictionary(Audio.AudioType.Music);
-            Dictionary<int, Audio> sound = GetAudioTypeDictionary(Audio.AudioType.Sound);
-            Dictionary<int, Audio> UISound = GetAudioTypeDictionary(Audio.AudioType.UISound);
+            ListAudio music = GetAudioTypeList(Audio.AudioType.Music);
+            ListAudio sound = GetAudioTypeList(Audio.AudioType.Sound);
+            ListAudio UISound = GetAudioTypeList(Audio.AudioType.UISound);
 
             {
                 int maxClipCount = music.Count + sound.Count + UISound.Count;
@@ -460,7 +441,7 @@ namespace Lineri.SoundSystem
             CompareAllAudioIfCorrectAddArray(UISound, Compare, ref result, ref lastIndex);
 
             Audio[] resultNoNull = new Audio[(lastIndex + 1)];
-            for (; lastIndex > 0; lastIndex--)
+            for (; lastIndex >= 0; lastIndex--)
             {
                 resultNoNull[lastIndex] = result[lastIndex];
             }
@@ -468,10 +449,10 @@ namespace Lineri.SoundSystem
             return resultNoNull;
         }
 
-        private static void CompareAllAudioIfCorrectAddArray(Dictionary<int, Audio> audioDict, Predicate<Audio> Compare,
+        private static void CompareAllAudioIfCorrectAddArray(ListAudio listAudio, Predicate<Audio> Compare,
             ref Audio[] result, ref int lastIndex)
         {
-            foreach (Audio audio in audioDict.Values)
+            foreach (Audio audio in listAudio)
             {
                 if (Compare(audio))
                 {
@@ -682,19 +663,20 @@ namespace Lineri.SoundSystem
 
             // code: 0.2.2.0 02  |  It is possible to exclude resource-intensive verification
             bool sourceNull = audioSource == null;
+            ListAudio listAudio = GetAudioTypeList(audioType);
+            int id = listAudio.GetFreeIndex();
 
             Audio audio = new Audio(
-                audioType, clip, loop, persist, volume, fadeInSeconds, fadeOutSeconds,
+                id, audioType, clip, loop, persist, volume, fadeInSeconds, fadeOutSeconds,
                 sourceTransform == null ? Gameobject.transform : sourceTransform,
                 sourceNull ? GetAudioSource(sourceTransform, ref sourceNull) : audioSource,
                 sourceNull
                 );
 
-            // Add it to dictionary
-            Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
-            audioDict.Add(audio.AudioID, audio);
+            // Add it to list
+            listAudio[id] = (audio);
 
-            return audio.AudioID;
+            return id;
         }
 
         /// <summary>
@@ -977,9 +959,9 @@ namespace Lineri.SoundSystem
 
         private static void StopAllAudio(in Audio.AudioType audioType, in float fadeOutSeconds)
         {
-            Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
+            ListAudio listAudio = GetAudioTypeList(audioType);
 
-            foreach (Audio audio in audioDict.Values)
+            foreach (Audio audio in listAudio)
             {
                 if (fadeOutSeconds >= 0) audio.FadeOutSeconds = fadeOutSeconds;
 
@@ -1027,9 +1009,9 @@ namespace Lineri.SoundSystem
 
         private static void PauseAllAudio(in Audio.AudioType audioType)
         {
-            Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
+            ListAudio listAudio = GetAudioTypeList(audioType);
 
-            foreach (Audio audio in audioDict.Values)
+            foreach (Audio audio in listAudio)
             {
                 audio.Pause();
             }
@@ -1075,9 +1057,9 @@ namespace Lineri.SoundSystem
 
         private static void UnPauseAllAudio(in Audio.AudioType audioType)
         {
-            Dictionary<int, Audio> audioDict = GetAudioTypeDictionary(audioType);
+            ListAudio listAudio = GetAudioTypeList(audioType);
 
-            foreach (Audio audio in audioDict.Values) audio.UnPause();
+            foreach (Audio audio in listAudio) audio.UnPause();
         }
         #endregion
 

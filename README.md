@@ -9,10 +9,11 @@
 ## Advantages of using:
 * Functionality: contains all the functions of **Eazy Sound Manager**, as well as extends them.
 * Steam Audio support is available.
+* Performance: it is a lightweight plugin with a strong focus on optimization.
 * Allows you to group clips and apply different settings to groups.
 * Queue Playback: Allows you to play clips one after another or all at once.
 * Ease of use: to add background music, it is enough to add a prefab to the stage and add the necessary clips, you do not need to additionally write a single line of code.
-* Speed: Due to its simplicity, **SoundSystem** greatly reduces the time to develop a complex sound scheme in a project.
+* Speed: due to its simplicity, **SoundSystem** greatly reduces the time to develop a complex sound scheme in a project.
 * Modularity: allows you to use any number of instances on stage without affecting each other's work, while allowing the possibility of combining several instances to create complex sound schemes.
 * Allows you to edit all the settings of a group of clips directly from the inspector.
 
@@ -25,16 +26,17 @@ You can also get acquainted with a short tutorial on the basic functions of the 
 5. Also, the *SoundPocket* class contains the bool variable "Play Sound On Awake", if its value is set to true, then when loading the scene, the queue of clips will start playing. This allows you to create simple sound schemes without additional code, for example, it can be used for background music by looping a queue of clips using the "Loop Clips" variable.
 6. But if you need a more complex interaction, you need to create a new script that will inherit from the *SoundPocketManager* class from the prefab placed on the stage and call any of its methods that ends in "Handler".
 Example:
->    public class MyClass : SoundPocketManager{
-> 
->    using Lineri.SoundSystem;
-> 
->    void Start()
->   {
-> 
->    PlayHandler();
-> 
->   } }
+```csharp
+public class MyClass : SoundPocketManager
+{
+    using Lineri.SoundSystem;
+ 
+    public void Start()
+   {
+      PlayHandler();
+   }
+}
+```
 
 7. After that, you need to add this class to the "Sound" object. In the "SoundPocket" field, assign a reference to the object that contains the "SoundPocket" class, in the case of an unchanged prefab, it will be the "SoundPocket" object.
 
@@ -43,8 +45,8 @@ Exactly the same approach with the rest of the methods in the *SoundPocketManage
 ## Questions and answers:
 * **Tell us more about how SoundSystem speeds up the development process. What steps does it simplify or automate?** Using the plugin, there is no need to design the architecture of the sound circuit, you do not need to think about the complex interactions of a bunch of elements with each other, it is enough to add the necessary blocks to the stage and link them to your project.
 * **Can I use SoundSystem to create complex sound scenarios, or is it more suitable for basic settings?** You can use the plugin to create complex scenarios. The plugin covers most of the possible needs.
-* **For projects of what level is the use of SoundSystem optimal?** Formally, SoundSystem is a tool with similar functionality as FMOD, but it has slightly fewer features, hence the very low entry threshold compared to the same FMOD. Therefore, answering the question: 2D indie games of small and medium size, using an event-oriented architecture (EDA), are considered optimal for use.
+* **For projects of what level is the use of SoundSystem optimal?** Formally, SoundSystem is a tool with similar functionality as FMOD, but it has slightly fewer features, hence the very low entry threshold compared to the same FMOD. Therefore, answering the question: 2D indie games of small and medium size, using an event-driven architecture (EDA), are considered optimal for use.
 * **Why is using SoundSystem for 3D games not optimal? Is this related to the features of 3D sound?** That's right. Although using Steam Audio is possible, the functionality of working with this tool is somewhat limited.
 * **If I want to make changes to sound schemes in the future, how easy will it be to refactor using SoundSystem?** The modular scheme allows you to change only the necessary modules without affecting other components in any way, thanks to this approach, refactoring will take a minimum of time.
-* **How does SoundSystem ensure modularity when using multiple instances on stage?** When using SoundSystem, it is recommended to use the event-oriented architecture (EDA) of the project. Thanks to this solution, each individual component of the sound circuit will be independent of each other and controlled only by events. 
+* **How does SoundSystem ensure modularity when using multiple instances on stage?** When using SoundSystem, it is recommended to use the event-driven architecture (EDA) of the project. Thanks to this solution, each individual component of the sound circuit will be independent of each other and controlled only by events. 
 * **If I have difficulties using SoundSystem or have an idea for improvement, how can I get support or leave a suggestion?** Contact me in any way, for example on GitHub. I am developing this plugin for my own use as well, so I will support it for a long time and any suggestions or questions are welcome.
