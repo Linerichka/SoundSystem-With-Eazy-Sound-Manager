@@ -24,21 +24,6 @@ namespace Lineri.SoundSystem
         public static bool OnlyOnePlayableMusicClip = true;
 
         /// <summary>
-        /// When set to true, new music audios that have the same audio clip as any other music audios, will be ignored
-        /// </summary>
-        public static bool IgnoreDuplicateMusic = false;
-
-        /// <summary>
-        /// When set to true, new sound audios that have the same audio clip as any other sound audios, will be ignored
-        /// </summary>
-        public static bool IgnoreDuplicateSounds = false;
-
-        /// <summary>
-        /// When set to true, new UI sound audios that have the same audio clip as any other UI sound audios, will be ignored
-        /// </summary>
-        public static bool IgnoreDuplicateUISounds = false;
-
-        /// <summary>
         /// Global volume ranging from 0 to 1
         /// </summary>
         public static float GlobalVolume
@@ -79,13 +64,13 @@ namespace Lineri.SoundSystem
         private static float _globalUISoundsVolume = 1f;
 
         #region Oprimize
-        private static Queue<AudioSource> _cachedAudioSourceOnGameobject;
-        private static Audio[] _audioArrayForGetAudiosFast;
+        private static StackFast<AudioSource> _cachedAudioSourceOnGameobject;
+         static StackFast<Audio> _cachedAudio;
         #endregion
 
-        private static ListAudio _musicAudio;
-        private static ListAudio _soundsAudio;
-        private static ListAudio _UISoundsAudio;
+        private static ListFastStatic<Audio> _musicAudio;
+        private static ListFastStatic<Audio> _soundsAudio;
+        private static ListFastStatic<Audio> _UISoundsAudio;
 
         public static EazySoundManager Instance
         {
@@ -127,11 +112,11 @@ namespace Lineri.SoundSystem
         /// </summary>
         private void Init()
         {
-            _musicAudio = new ListAudio(64);
-            _soundsAudio = new ListAudio(64);
-            _UISoundsAudio = new ListAudio(64);
-            _cachedAudioSourceOnGameobject = new Queue<AudioSource>(64);
-            _audioArrayForGetAudiosFast = new Audio[64];
+            _musicAudio = new ListFastStatic<Audio>(64);
+            _soundsAudio = new ListFastStatic<Audio>(64);
+            _UISoundsAudio = new ListFastStatic<Audio>(64);
+            _cachedAudioSourceOnGameobject = new StackFast<AudioSource>(64);
+            _cachedAudio = new StackFast<Audio>(64);
 
             DontDestroyOnLoad(this);
         }
@@ -153,6 +138,8 @@ namespace Lineri.SoundSystem
         /// <param name="mode">The scene load mode</param>
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            if (mode == LoadSceneMode.Additive) return;
+            
             // Stop and remove all non-persistent audio
             RemoveNonPersistAudio(_musicAudio);
             RemoveNonPersistAudio(_soundsAudio);
@@ -167,15 +154,41 @@ namespace Lineri.SoundSystem
             UpdateAllAudio(_soundsAudio);
             UpdateAllAudio(_UISoundsAudio);
         }
+        
+        /// <summary>
+        /// Updates the state of all audios of an audio dist
+        /// </summary>
+        /// <param name="listAudio">The audio dist to update</param>
+        private static void UpdateAllAudio(ListFastStatic<Audio> listAudio)
+        {
+            if (!Application.isFocused) return;
+
+            // Go through all audios and update them
+            int count = listAudio.Count;
+            for (int i = 0; i < count; i++)
+            {
+                Audio audio = listAudio[i];
+
+                if (audio == null || audio.Paused || !audio.PlayedStart) continue;
+
+                audio.Update();
+
+                // Remove it if it is no longer active (playing)
+                if (!audio.IsPlaying)
+                {
+                    DeleteAudio(audio, listAudio, ref i);
+                }
+            }
+        }
 
         /// <summary>
         /// Retrieves the audio dist based on the audioType
         /// </summary>
         /// <param name="audioType">The audio type of the dist to return</param>
         /// <returns>An audio dist</returns>
-        private static ListAudio GetAudioTypeList(in Audio.AudioType audioType)
+        private static ListFastStatic<Audio> GetAudioTypeList(Audio.AudioType audioType)
         {
-            ListAudio listAudio;
+            ListFastStatic<Audio> listAudio;
 
             switch (audioType)
             {
@@ -194,57 +207,13 @@ namespace Lineri.SoundSystem
 
             return listAudio;
         }
-
-        /// <summary>
-        /// Retrieves the IgnoreDuplicates setting of audios of a specified audio type
-        /// </summary>
-        /// <param name="audioType">The audio type that the returned IgnoreDuplicates setting affects</param>
-        /// <returns>An IgnoreDuplicates setting (bool)</returns>
-        private static bool GetAudioTypeIgnoreDuplicateSetting(in Audio.AudioType audioType)
-        {
-            switch (audioType)
-            {
-                case Audio.AudioType.Music:
-                    return IgnoreDuplicateMusic;
-                case Audio.AudioType.Sound:
-                    return IgnoreDuplicateSounds;
-                case Audio.AudioType.UISound:
-                    return IgnoreDuplicateUISounds;
-                default:
-                    return false;
-            }
-        }
-
-        /// <summary>
-        /// Updates the state of all audios of an audio dist
-        /// </summary>
-        /// <param name="listAudio">The audio dist to update</param>
-        private static void UpdateAllAudio(ListAudio listAudio)
-        {
-            if (!Application.isFocused) return;
-
-            // Go through all audios and update them
-            for (int i = 0; i < listAudio.Count; i++)
-            {
-                Audio audio = listAudio[i];
-
-                if (audio == null || audio.Paused) continue;
-
-                audio.Update();
-
-                // Remove it if it is no longer active (playing)
-                if (audio.IsPlaying || audio.Paused) continue;
-
-                DeleteAudio(audio, listAudio, i);
-            }
-        }
-
+        
         #region Delete and remove Audio
         /// <summary>
         /// Remove all non-persistant audios from an audio dist
         /// </summary>
         /// <param name="listAudio">The audio dist whose non-persistant audios are getting removed</param>
-        private static void RemoveNonPersistAudio(ListAudio listAudio)
+        private static void RemoveNonPersistAudio(ListFastStatic<Audio> listAudio)
         {
             // Go through all audios and remove them if they should not persist through scenes
             for (int i = 0; i < listAudio.Count; i++)
@@ -253,11 +222,11 @@ namespace Lineri.SoundSystem
 
                 if (audio.Persist && audio.Activated) continue;
 
-                DeleteAudio(audio, listAudio, i);
+                DeleteAudio(audio, listAudio, ref i);
             }
         }
 
-        private static void DeleteAudio(Audio audio, ListAudio listAudio, in int key)
+        private static void DeleteAudio(Audio audio, ListFastStatic<Audio> listAudio, ref int key)
         {
             if (audio.AudioSource.transform == Gameobject.transform)
             {
@@ -274,6 +243,7 @@ namespace Lineri.SoundSystem
 
             audio.Delete();
             listAudio[key] = null;
+            _cachedAudio.Enqueue(audio);
         }
 
         /// <summary>
@@ -296,7 +266,7 @@ namespace Lineri.SoundSystem
         /// </summary>
         /// <param name="audioID">The id of the Audio to be retrieved</param>
         /// <returns>Audio that has as its id the audioID, null if no such Audio is found</returns>
-        public static Audio GetAudio(in int audioID, in Audio.AudioType audioType)
+        public static Audio GetAudio(Audio.AudioType audioType, int audioID)
         {
             switch (audioType)
             {
@@ -311,11 +281,11 @@ namespace Lineri.SoundSystem
         }
 
         /// <summary>
-        /// Returns the first occurrence of Audio that plays the given audioClip. Returns null if no such Audio is found
+        /// Returns the all occurrence of Audio that plays the given audioClip. Returns null if no such Audio is found
         /// </summary>
         /// <param name="audioClip">The audio clip of the Audio to be retrieved</param>
-        /// <returns>First occurrence of Audio that has as plays the audioClip, null if no such Audio is found</returns>
-        public static Audio GetAudio(AudioClip audioClip, in Audio.AudioType audioType)
+        /// <returns>All occurrence of Audio that has as plays the audioClip, null if no such Audio is found</returns>
+        public static List<Audio> GetAudio(Audio.AudioType audioType, AudioClip audioClip)
         {
             switch (audioType)
             {
@@ -334,19 +304,19 @@ namespace Lineri.SoundSystem
         /// </summary>
         /// <param name="audioID">The id of the music Audio to be returned</param>
         /// <returns>Music Audio that has as its id the audioID if one is found, null if no such Audio is found</returns>
-        public static Audio GetMusicAudio(in int audioID)
+        public static Audio GetMusicAudio(int audioID)
         {
-            return GetAudio(Audio.AudioType.Music, audioID);
+            return GetAudioP(Audio.AudioType.Music, ref audioID);
         }
 
         /// <summary>
-        /// Returns the first occurrence of music Audio that plays the given audioClip. Returns null if no such Audio is found
+        /// Returns the all occurrence of music Audio that plays the given audioClip. Returns null if no such Audio is found
         /// </summary>
         /// <param name="audioClip">The audio clip of the music Audio to be retrieved</param>
-        /// <returns>First occurrence of music Audio that has as plays the audioClip, null if no such Audio is found</returns>
-        public static Audio GetMusicAudio(AudioClip audioClip)
+        /// <returns>All occurrence of music Audio that has as plays the audioClip, null if no such Audio is found</returns>
+        public static List<Audio> GetMusicAudio(AudioClip audioClip)
         {
-            return GetAudio(Audio.AudioType.Music, audioClip);
+            return GetAudioP(Audio.AudioType.Music, audioClip);
         }
 
         /// <summary>
@@ -354,19 +324,19 @@ namespace Lineri.SoundSystem
         /// </summary>
         /// <param name="audioID">The id of the sound fx Audio to be returned</param>
         /// <returns>Sound fx Audio that has as its id the audioID if one is found, null if no such Audio is found</returns>
-        public static Audio GetSoundAudio(in int audioID)
+        public static Audio GetSoundAudio(int audioID)
         {
-            return GetAudio(Audio.AudioType.Sound, audioID);
+            return GetAudioP(Audio.AudioType.Sound, ref audioID);
         }
 
         /// <summary>
-        /// Returns the first occurrence of sound Audio that plays the given audioClip. Returns null if no such Audio is found
+        /// Returns the all occurrence of sound Audio that plays the given audioClip. Returns null if no such Audio is found
         /// </summary>
         /// <param name="audioClip">The audio clip of the sound Audio to be retrieved</param>
-        /// <returns>First occurrence of sound Audio that has as plays the audioClip, null if no such Audio is found</returns>
-        public static Audio GetSoundAudio(AudioClip audioClip)
+        /// <returns>All occurrence of sound Audio that has as plays the audioClip, null if no such Audio is found</returns>
+        public static List<Audio> GetSoundAudio(AudioClip audioClip)
         {
-            return GetAudio(Audio.AudioType.Sound, audioClip);
+            return GetAudioP(Audio.AudioType.Sound, audioClip);
         }
 
         /// <summary>
@@ -374,165 +344,48 @@ namespace Lineri.SoundSystem
         /// </summary>
         /// <param name="audioID">The id of the UI sound fx Audio to be returned</param>
         /// <returns>UI sound fx Audio that has as its id the audioID if one is found, null if no such Audio is found</returns>
-        public static Audio GetUISoundAudio(in int audioID)
+        public static Audio GetUISoundAudio(int audioID)
         {
-            return GetAudio(Audio.AudioType.UISound, audioID);
+            return GetAudioP(Audio.AudioType.UISound, ref audioID);
         }
 
         /// <summary>
-        /// Returns the first occurrence of UI sound Audio that plays the given audioClip. Returns null if no such Audio is found
+        /// Returns the all occurrence of UI sound Audio that plays the given audioClip. Returns null if no such Audio is found
         /// </summary>
         /// <param name="audioClip">The audio clip of the UI sound Audio to be retrieved</param>
-        /// <returns>First occurrence of UI sound Audio that has as plays the audioClip, null if no such Audio is found</returns>
-        public static Audio GetUISoundAudio(AudioClip audioClip)
+        /// <returns>All occurrence of UI sound Audio that has as plays the audioClip, null if no such Audio is found</returns>
+        public static List<Audio> GetUISoundAudio(AudioClip audioClip)
         {
-            return GetAudio(Audio.AudioType.UISound, audioClip);
+            return GetAudioP(Audio.AudioType.UISound, audioClip);
         }
 
-        private static Audio GetAudio(in Audio.AudioType audioType, in int audioID)
+        private static Audio GetAudioP(Audio.AudioType audioType, ref int audioID)
         {
-            ListAudio listAudio = GetAudioTypeList(audioType);
+            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
 
             if (!listAudio.Contains(audioID)) return null;
 
             return listAudio[audioID];
         }
 
-        private static Audio GetAudio(in Audio.AudioType audioType, AudioClip audioClip)
+        private static List<Audio> GetAudioP(Audio.AudioType audioType, AudioClip audioClip)
         {
-            ListAudio listAudio = GetAudioTypeList(audioType);
+            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
+            List<Audio> result = new List<Audio>();
             
             int count = listAudio.Count;
             for (int i = 0; i < count; i++)
             {
                 Audio audio = listAudio[i];
                 
-                if (audio != null && audio.Clip == audioClip) return audio;
+                if (audio != null && audio.Clip == audioClip) result.Add(audio);
             }
             
-            return null;
+            return result;
         }
-
-        #region Get Audios Fast
-        /// <summary>
-        /// EXPERIMENTAL! It allows you to get an Audio array much faster than if it were done in the usual way.
-        /// Accepts Predicate<Audio>, all Audio for which true will be returned will be added to the result.
-        /// </summary>
-        public static Audio[] GetAudiosFast(Predicate<Audio> Compare)
-        {
-            ref Audio[] result = ref _audioArrayForGetAudiosFast;
-
-            ListAudio music = GetAudioTypeList(Audio.AudioType.Music);
-            ListAudio sound = GetAudioTypeList(Audio.AudioType.Sound);
-            ListAudio UISound = GetAudioTypeList(Audio.AudioType.UISound);
-
-            {
-                int maxClipCount = music.Count + sound.Count + UISound.Count;
-
-                if (result.Length <= maxClipCount)
-                {
-                    result = new Audio[maxClipCount * 2];
-                }
-            }
-
-            int lastIndex = -1;
-            CompareAllAudioIfCorrectAddArray(music, Compare, ref result, ref lastIndex);
-            CompareAllAudioIfCorrectAddArray(sound, Compare, ref result, ref lastIndex);
-            CompareAllAudioIfCorrectAddArray(UISound, Compare, ref result, ref lastIndex);
-
-            Audio[] resultNoNull = new Audio[(lastIndex + 1)];
-            for (; lastIndex >= 0; lastIndex--)
-            {
-                resultNoNull[lastIndex] = result[lastIndex];
-            }
-
-            return resultNoNull;
-        }
-
-        private static void CompareAllAudioIfCorrectAddArray(ListAudio listAudio, Predicate<Audio> Compare,
-            ref Audio[] result, ref int lastIndex)
-        {
-            foreach (Audio audio in listAudio)
-            {
-                if (Compare(audio))
-                {
-                    lastIndex++;
-                    result[lastIndex] = audio;
-                }
-            }
-        }
-        #endregion
         #endregion
 
         #region Prepare Function
-
-        /// <summary>
-        /// Prepares and initializes background music
-        /// </summary>
-        /// <param name="clip">The audio clip to prepare</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareMusic(AudioClip clip)
-        {
-            return PrepareAudio(Audio.AudioType.Music, clip, 1f, false, false, 1f, 1f, null);
-        }
-
-        /// <summary>
-        /// Prepares and initializes background music
-        /// </summary>
-        /// <param name="clip">The audio clip to prepare</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareMusic(AudioClip clip, in float volume)
-        {
-            return PrepareAudio(Audio.AudioType.Music, clip, volume, false, false, 1f, 1f, null);
-        }
-
-        /// <summary>
-        /// Prepares and initializes background music
-        /// </summary>
-        /// <param name="clip">The audio clip to prepare</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <param name="loop">Wether the music is looped</param>
-        /// <param name = "persist" > Whether the audio persists in between scene changes</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareMusic(AudioClip clip, in float volume, in bool loop, in bool persist)
-        {
-            return PrepareAudio(Audio.AudioType.Music, clip, volume, loop, persist, 1f, 1f, null);
-        }
-
-        /// <summary>
-        /// Prerpares and initializes background music
-        /// </summary>
-        /// <param name="clip">The audio clip to prepare</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <param name="loop">Wether the music is looped</param>
-        /// <param name="persist"> Whether the audio persists in between scene changes</param>
-        /// <param name="fadeInValue">How many seconds it needs for the audio to fade in/ reach target volume (if higher than current)</param>
-        /// <param name="fadeOutValue"> How many seconds it needs for the audio to fade out/ reach target volume (if lower than current)</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareMusic(AudioClip clip, in float volume, in bool loop, in bool persist,
-            in float fadeInSeconds, in float fadeOutSeconds)
-        {
-            return PrepareAudio(Audio.AudioType.Music, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, null);
-        }
-
-        /// <summary>
-        /// Prepares and initializes background music
-        /// </summary>
-        /// <param name="clip">The audio clip to prepare</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <param name="loop">Wether the music is looped</param>
-        /// <param name="persist"> Whether the audio persists in between scene changes</param>
-        /// <param name="fadeInValue">How many seconds it needs for the audio to fade in/ reach target volume (if higher than current)</param>
-        /// <param name="fadeOutValue"> How many seconds it needs for the audio to fade out/ reach target volume (if lower than current)</param>
-        /// <param name="sourceTransform">The transform that is the source of the music (will become 3D audio). If 3D audio is not wanted, use null</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareMusic(AudioClip clip, in float volume, in bool loop, in bool persist,
-            in float fadeInSeconds, in float fadeOutSeconds, Transform sourceTransform)
-        {
-            return PrepareAudio(Audio.AudioType.Music, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, sourceTransform);
-        }
-
         /// <summary>
         /// Prepares and initializes background music
         /// </summary>
@@ -544,9 +397,9 @@ namespace Lineri.SoundSystem
         /// <param name="fadeOutValue"> How many seconds it needs for the audio to fade out/ reach target volume (if lower than current)</param>
         /// <param name="sourceTransform">The transform that is the source of the music (will become 3D audio). If 3D audio is not wanted, use null</param>
         /// <param name="audioSource">Specify the AudioSource to play the clips on it. Takes over some settings of the specified AudioSource</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareMusic(AudioClip clip, in float volume, in bool loop, in bool persist,
-            in float fadeInSeconds, in float fadeOutSeconds, Transform sourceTransform, AudioSource audioSource)
+        /// <returns>An Audio class that allows you to control the sound being played.</returns>
+        public static Audio PrepareMusic(AudioClip clip, float volume = 1f, bool loop = false, bool persist = false,
+            float fadeInSeconds = 0f, float fadeOutSeconds = 0f, Transform sourceTransform = null, AudioSource audioSource = null)
         {
             return PrepareAudio(Audio.AudioType.Music, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, sourceTransform, audioSource);
         }
@@ -555,128 +408,64 @@ namespace Lineri.SoundSystem
         /// Prepares and initializes a sound fx
         /// </summary>
         /// <param name="clip">The audio clip to prepare</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareSound(AudioClip clip)
-        {
-            return PrepareAudio(Audio.AudioType.Sound, clip, 1f, false, false, 0f, 0f, null);
-        }
-
-        /// <summary>
-        /// Prepares and initializes a sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to prepare</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareSound(AudioClip clip, in float volume)
-        {
-            return PrepareAudio(Audio.AudioType.Sound, clip, volume, false, false, 0f, 0f, null);
-        }
-
-        /// <summary>
-        /// Prepares and initializes a sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to prepare</param>
-        /// <param name="loop">Wether the sound is looped</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareSound(AudioClip clip, in bool loop)
-        {
-            return PrepareAudio(Audio.AudioType.Sound, clip, 1f, loop, false, 0f, 0f, null);
-        }
-
-        /// <summary>
-        /// Prepares and initializes a sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to prepare</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <param name="loop">Wether the sound is looped</param>
-        /// <param name="sourceTransform">The transform that is the source of the sound (will become 3D audio). If 3D audio is not wanted, use null</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareSound(AudioClip clip, in float volume, in bool loop, Transform sourceTransform)
-        {
-            return PrepareAudio(Audio.AudioType.Sound, clip, volume, loop, false, 0f, 0f, sourceTransform);
-        }
-
-        /// <summary>
-        /// Prepares and initializes a sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to prepare</param>
         /// <param name="volume"> The volume the music will have</param>
         /// <param name="loop">Wether the sound is looped</param>
         /// <param name="sourceTransform">The transform that is the source of the sound (will become 3D audio). If 3D audio is not wanted, use null</param>
         /// <param name="audioSource">Specify the AudioSource to play the clips on it. Takes over some settings of the specified AudioSource</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareSound(AudioClip clip, in float volume, in bool loop, Transform sourceTransform, AudioSource audioSource)
-        {
-            return PrepareAudio(Audio.AudioType.Sound, clip, volume, loop, false, 0f, 0f, sourceTransform, audioSource);
-        }
-
-        /// <summary>
-        /// Prepares and initializes a sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to prepare</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <param name="loop">Wether the sound is looped</param>
-        /// <param name="sourceTransform">The transform that is the source of the sound (will become 3D audio). If 3D audio is not wanted, use null</param>
-        /// <param name="audioSource">Specify the AudioSource to play the clips on it. Takes over some settings of the specified AudioSource</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareSound(AudioClip clip, in float volume, in bool loop, in bool persist,
-            in float fadeInSeconds, in float fadeOutSeconds, Transform sourceTransform, AudioSource audioSource = null)
+        /// <returns>An Audio class that allows you to control the sound being played.</returns>
+        public static Audio PrepareSound(AudioClip clip, float volume = 1f, bool loop = false, bool persist = false,
+            float fadeInSeconds = 0f, float fadeOutSeconds = 0f, Transform sourceTransform = null, AudioSource audioSource = null)
         {
             return PrepareAudio(Audio.AudioType.Sound, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, sourceTransform, audioSource);
         }
-
-        /// <summary>
-        /// Prepares and initializes a UI sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to prepare</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareUISound(AudioClip clip)
-        {
-            return PrepareAudio(Audio.AudioType.UISound, clip, 1f, false, false, 0f, 0f, null);
-        }
-
+        
         /// <summary>
         /// Prepares and initializes a UI sound fx
         /// </summary>
         /// <param name="clip">The audio clip to prepare</param>
         /// <param name="volume"> The volume the music will have</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PrepareUISound(AudioClip clip, in float volume)
+        /// <returns>An Audio class that allows you to control the sound being played.</returns>
+        public static Audio PrepareUISound(AudioClip clip, float volume = 1f)
         {
             return PrepareAudio(Audio.AudioType.UISound, clip, volume, false, false, 0f, 0f, null);
         }
 
-        private static int PrepareAudio(in Audio.AudioType audioType, AudioClip clip, in float volume, in bool loop, in bool persist,
-            in float fadeInSeconds, in float fadeOutSeconds, Transform sourceTransform, AudioSource audioSource = null)
+        private static Audio PrepareAudio(Audio.AudioType audioType, AudioClip clip, float volume, bool loop, bool persist,
+            float fadeInSeconds, float fadeOutSeconds, Transform sourceTransform, AudioSource audioSource = null)
         {
             if (clip == null)
             {
-                CatchAndProcessingException(new System.Exception("[Eazy Sound Manager] Audio clip is null"));
-            }
-
-            if (GetAudioTypeIgnoreDuplicateSetting(audioType))
-            {
-                Audio duplicateAudio = GetAudio(audioType, clip);
-
-                if (duplicateAudio != null) return duplicateAudio.AudioID;
+                throw new System.Exception("[Eazy Sound Manager] Audio clip is null");
             }
 
             // code: 0.2.2.0 02  |  It is possible to exclude resource-intensive verification
             bool sourceNull = audioSource == null;
-            ListAudio listAudio = GetAudioTypeList(audioType);
+            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
             int id = listAudio.GetFreeIndex();
-
-            Audio audio = new Audio(
-                id, audioType, clip, loop, persist, volume, fadeInSeconds, fadeOutSeconds,
-                sourceTransform == null ? Gameobject.transform : sourceTransform,
-                sourceNull ? GetAudioSource(sourceTransform, ref sourceNull) : audioSource,
-                sourceNull
-                );
+            sourceTransform = sourceTransform == null ? Gameobject.transform : sourceTransform;
+            
+            Audio audio = GetAudioClass();
+            audio.Init(
+                ref id, ref audioType, clip, ref loop, ref persist, ref volume, ref fadeInSeconds, ref fadeOutSeconds,
+                sourceTransform, sourceNull ? GetAudioSource(sourceTransform, ref sourceNull) : audioSource,
+                ref sourceNull);
 
             // Add it to list
             listAudio[id] = (audio);
+            
+            return audio;
+        }
 
-            return id;
+        private static Audio GetAudioClass()
+        {
+            Audio audio;
+            
+            if (!_cachedAudio.TryDequeue(out audio))
+            {
+                audio = new Audio();
+            }
+
+            return audio;
         }
 
         /// <summary>
@@ -708,73 +497,6 @@ namespace Lineri.SoundSystem
         /// Play background music
         /// </summary>
         /// <param name="clip">The audio clip to play</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlayMusic(AudioClip clip)
-        {
-            return PlayAudio(Audio.AudioType.Music, clip, 1f, false, false, 1f, 1f, -1f, null);
-        }
-
-        /// <summary>
-        /// Play background music
-        /// </summary>
-        /// <param name="clip">The audio clip to play</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlayMusic(AudioClip clip, in float volume)
-        {
-            return PlayAudio(Audio.AudioType.Music, clip, volume, false, false, 1f, 1f, -1f, null);
-        }
-
-        /// <summary>
-        /// Play background music
-        /// </summary>
-        /// <param name="clip">The audio clip to play</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <param name="loop">Wether the music is looped</param>
-        /// <param name = "persist" > Whether the audio persists in between scene changes</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlayMusic(AudioClip clip, in float volume, in bool loop, in bool persist)
-        {
-            return PlayAudio(Audio.AudioType.Music, clip, volume, loop, persist, 1f, 1f, -1f, null);
-        }
-
-        /// <summary>
-        /// Play background music
-        /// </summary>
-        /// <param name="clip">The audio clip to play</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <param name="loop">Wether the music is looped</param>
-        /// <param name="persist"> Whether the audio persists in between scene changes</param>
-        /// <param name="fadeInSeconds">How many seconds it needs for the audio to fade in/ reach target volume (if higher than current)</param>
-        /// <param name="fadeOutSeconds"> How many seconds it needs for the audio to fade out/ reach target volume (if lower than current)</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlayMusic(AudioClip clip, in float volume, in bool loop, in bool persist, in float fadeInSeconds, in float fadeOutSeconds)
-        {
-            return PlayAudio(Audio.AudioType.Music, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, -1f, null);
-        }
-
-        /// <summary>
-        /// Play background music
-        /// </summary>
-        /// <param name="clip">The audio clip to play</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <param name="loop">Wether the music is looped</param>
-        /// <param name="persist"> Whether the audio persists in between scene changes</param>
-        /// <param name="fadeInSeconds">How many seconds it needs for the audio to fade in/ reach target volume (if higher than current)</param>
-        /// <param name="fadeOutSeconds"> How many seconds it needs for the audio to fade out/ reach target volume (if lower than current)</param>
-        /// <param name="currentMusicfadeOutSeconds"> How many seconds it needs for current music audio to fade out. It will override its own fade out seconds. If -1 is passed, current music will keep its own fade out seconds</param>
-        /// <param name="sourceTransform">The transform that is the source of the music (will become 3D audio). If 3D audio is not wanted, use null</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlayMusic(AudioClip clip, in float volume, in bool loop, in bool persist,
-            in float fadeInSeconds, in float fadeOutSeconds, in float currentMusicfadeOutSeconds, Transform sourceTransform)
-        {
-            return PlayAudio(Audio.AudioType.Music, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, currentMusicfadeOutSeconds, sourceTransform);
-        }
-
-        /// <summary>
-        /// Play background music
-        /// </summary>
-        /// <param name="clip">The audio clip to play</param>
         /// <param name="volume"> The volume the music will have</param>
         /// <param name="loop">Wether the music is looped</param>
         /// <param name="persist"> Whether the audio persists in between scene changes</param>
@@ -783,9 +505,9 @@ namespace Lineri.SoundSystem
         /// <param name="currentMusicfadeOutSeconds"> How many seconds it needs for current music audio to fade out. It will override its own fade out seconds. If -1 is passed, current music will keep its own fade out seconds</param>
         /// <param name="sourceTransform">The transform that is the source of the music (will become 3D audio). If 3D audio is not wanted, use null</param>
         /// <param name="audioSource">Specify the AudioSource to play the clips on it. Takes over some settings of the specified AudioSource</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlayMusic(AudioClip clip, in float volume, in bool loop, in bool persist,
-            in float fadeInSeconds, in float fadeOutSeconds, in float currentMusicfadeOutSeconds, Transform sourceTransform, AudioSource audioSource)
+        /// <returns>An Audio class that allows you to control the sound being played.</returns>
+        public static Audio PlayMusic(AudioClip clip, float volume = 1f, bool loop = false, bool persist = false,
+            float fadeInSeconds = 0f, float fadeOutSeconds = 0f, float currentMusicfadeOutSeconds = 0f, Transform sourceTransform = null, AudioSource audioSource = null)
         {
             return PlayAudio(Audio.AudioType.Music, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds,
                 currentMusicfadeOutSeconds, sourceTransform, audioSource);
@@ -795,72 +517,13 @@ namespace Lineri.SoundSystem
         /// Play a sound fx
         /// </summary>
         /// <param name="clip">The audio clip to play</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlaySound(AudioClip clip)
-        {
-            return PlayAudio(Audio.AudioType.Sound, clip, 1f, false, false, 0f, 0f, -1f, null);
-        }
-
-        /// <summary>
-        /// Play a sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to play</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlaySound(AudioClip clip, in float volume)
-        {
-            return PlayAudio(Audio.AudioType.Sound, clip, volume, false, false, 0f, 0f, -1f, null);
-        }
-
-        /// <summary>
-        /// Play a sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to play</param>
-        /// <param name="loop">Wether the sound is looped</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlaySound(AudioClip clip, in bool loop)
-        {
-            return PlayAudio(Audio.AudioType.Sound, clip, 1f, loop, false, 0f, 0f, -1f, null);
-        }
-
-        /// <summary>
-        /// Play a sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to play</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <param name="loop">Wether the sound is looped</param>
-        /// <param name="sourceTransform">The transform that is the source of the sound (will become 3D audio). If 3D audio is not wanted, use null</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlaySound(AudioClip clip, in float volume, in bool loop, Transform sourceTransform)
-        {
-            return PlayAudio(Audio.AudioType.Sound, clip, volume, loop, false, 0f, 0f, -1f, sourceTransform);
-        }
-
-        /// <summary>
-        /// Play a sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to play</param>
         /// <param name="volume"> The volume the music will have</param>
         /// <param name="loop">Wether the sound is looped</param>
         /// <param name="sourceTransform">The transform that is the source of the sound (will become 3D audio). If 3D audio is not wanted, use null</param>
         /// <param name="audioSource">Specify the AudioSource to play the clips on it. Takes over some settings of the specified AudioSource</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlaySound(AudioClip clip, in float volume, in bool loop, Transform sourceTransform, AudioSource audioSource)
-        {
-            return PlayAudio(Audio.AudioType.Sound, clip, volume, loop, false, 0f, 0f, -1f, sourceTransform, audioSource);
-        }
-
-        /// <summary>
-        /// Play a sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to play</param>
-        /// <param name="volume"> The volume the music will have</param>
-        /// <param name="loop">Wether the sound is looped</param>
-        /// <param name="sourceTransform">The transform that is the source of the sound (will become 3D audio). If 3D audio is not wanted, use null</param>
-        /// <param name="audioSource">Specify the AudioSource to play the clips on it. Takes over some settings of the specified AudioSource</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlaySound(AudioClip clip, in float volume, in bool loop, in bool persist,
-            in float fadeInSeconds, in float fadeOutSeconds, Transform sourceTransform, AudioSource audioSource = null)
+        /// <returns>An Audio class that allows you to control the sound being played.</returns>
+        public static Audio PlaySound(AudioClip clip, float volume = 1f, bool loop = false, bool persist = false,
+            float fadeInSeconds = 0f, float fadeOutSeconds = 0f, Transform sourceTransform = null, AudioSource audioSource = null)
         {
             return PlayAudio(Audio.AudioType.Sound, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, -1f, sourceTransform, audioSource);
         }
@@ -869,25 +532,15 @@ namespace Lineri.SoundSystem
         /// Play a UI sound fx
         /// </summary>
         /// <param name="clip">The audio clip to play</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlayUISound(AudioClip clip)
-        {
-            return PlayAudio(Audio.AudioType.UISound, clip, 1f, false, false, 0f, 0f, -1f, null);
-        }
-
-        /// <summary>
-        /// Play a UI sound fx
-        /// </summary>
-        /// <param name="clip">The audio clip to play</param>
         /// <param name="volume"> The volume the music will have</param>
-        /// <returns>The ID of the created Audio object</returns>
-        public static int PlayUISound(AudioClip clip, in float volume)
+        /// <returns>An Audio class that allows you to control the sound being played.</returns>
+        public static Audio PlayUISound(AudioClip clip, float volume = 1f)
         {
             return PlayAudio(Audio.AudioType.UISound, clip, volume, false, false, 0f, 0f, -1f, null);
         }
 
-        private static int PlayAudio(Audio.AudioType audioType, AudioClip clip, in float volume, in bool loop, in bool persist,
-            in float fadeInSeconds, in float fadeOutSeconds, in float currentMusicfadeOutSeconds, Transform sourceTransform, AudioSource audioSource = null)
+        private static Audio PlayAudio(Audio.AudioType audioType, AudioClip clip, float volume, bool loop, bool persist,
+            float fadeInSeconds, float fadeOutSeconds, float currentMusicfadeOutSeconds, Transform sourceTransform, AudioSource audioSource = null)
         {
             // Stop all current music playing
             if (OnlyOnePlayableMusicClip && audioType == Audio.AudioType.Music)
@@ -895,10 +548,10 @@ namespace Lineri.SoundSystem
                 StopAllMusic(currentMusicfadeOutSeconds);
             }
 
-            int audioID = PrepareAudio(audioType, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, sourceTransform, audioSource);
-            GetAudio(audioType, audioID).Play();
+            Audio audio = PrepareAudio(audioType, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, sourceTransform, audioSource);
+            audio.Play();
 
-            return audioID;
+            return audio;
         }
 
         #endregion
@@ -917,7 +570,7 @@ namespace Lineri.SoundSystem
         /// Stop all audio playing
         /// </summary>
         /// <param name="musicFadeOutSeconds"> How many seconds it needs for all music audio to fade out. It will override  their own fade out seconds. If -1 is passed, all music will keep their own fade out seconds</param>
-        public static void StopAll(in float musicFadeOutSeconds)
+        public static void StopAll(float musicFadeOutSeconds)
         {
             StopAllMusic(musicFadeOutSeconds);
             StopAllSounds();
@@ -936,7 +589,7 @@ namespace Lineri.SoundSystem
         /// Stop all music playing
         /// </summary>
         /// <param name="fadeOutSeconds"> How many seconds it needs for all music audio to fade out. It will override  their own fade out seconds. If -1 is passed, all music will keep their own fade out seconds</param>
-        public static void StopAllMusic(in float fadeOutSeconds)
+        public static void StopAllMusic(float fadeOutSeconds)
         {
             StopAllAudio(Audio.AudioType.Music, fadeOutSeconds);
         }
@@ -957,9 +610,9 @@ namespace Lineri.SoundSystem
             StopAllAudio(Audio.AudioType.UISound, -1f);
         }
 
-        private static void StopAllAudio(in Audio.AudioType audioType, in float fadeOutSeconds)
+        private static void StopAllAudio(Audio.AudioType audioType, float fadeOutSeconds)
         {
-            ListAudio listAudio = GetAudioTypeList(audioType);
+            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
 
             foreach (Audio audio in listAudio)
             {
@@ -1007,9 +660,9 @@ namespace Lineri.SoundSystem
             PauseAllAudio(Audio.AudioType.UISound);
         }
 
-        private static void PauseAllAudio(in Audio.AudioType audioType)
+        private static void PauseAllAudio(Audio.AudioType audioType)
         {
-            ListAudio listAudio = GetAudioTypeList(audioType);
+            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
 
             foreach (Audio audio in listAudio)
             {
@@ -1055,9 +708,9 @@ namespace Lineri.SoundSystem
             UnPauseAllAudio(Audio.AudioType.UISound);
         }
 
-        private static void UnPauseAllAudio(in Audio.AudioType audioType)
+        private static void UnPauseAllAudio(Audio.AudioType audioType)
         {
-            ListAudio listAudio = GetAudioTypeList(audioType);
+            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
 
             foreach (Audio audio in listAudio) audio.UnPause();
         }

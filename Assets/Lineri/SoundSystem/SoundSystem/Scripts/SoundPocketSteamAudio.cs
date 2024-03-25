@@ -15,16 +15,16 @@ namespace Lineri.SoundSystem
             base.Play();
         }
 
-        protected override int PlayAudioMusic(AudioClip clip, AudioSource audioSource = null)
+        protected override Audio PlayAudioMusic(AudioClip clip, AudioSource audioSource = null)
         {
             return base.PlayAudioMusic(clip, this.AudioSource);
         }
-        protected override int PlayAudioSound(AudioClip clip, AudioSource audioSource = null)
+        protected override Audio PlayAudioSound(AudioClip clip, AudioSource audioSource = null)
         {
             return base.PlayAudioSound(clip, this.AudioSource);
         }
 
-        protected override void PlayAudioFromList(in bool callPlay)
+        protected override void PlayAudioFromList(bool callPlay)
         {
             if (!_playWasCalled || !PlayClips || !Application.isFocused) return;
 

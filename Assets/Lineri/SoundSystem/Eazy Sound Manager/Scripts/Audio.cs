@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 
 namespace Lineri.SoundSystem
 {
@@ -36,7 +37,9 @@ namespace Lineri.SoundSystem
         /// Whether the audio is created and updated at least once. 
         /// </summary>
         public bool Activated { get; private set; }
-
+        
+        public bool PlayedStart { get; private set; }
+        
         public bool Deleted { get; private set; }
 
         /// <summary>
@@ -208,6 +211,8 @@ namespace Lineri.SoundSystem
 
         public bool DeleteAudioSource = true;
 
+        public bool SourceTransformIsManager = true;
+
         /// <summary>
         /// Enum representing the type of audio
         /// </summary>
@@ -230,8 +235,15 @@ namespace Lineri.SoundSystem
         private float _fadeInterpolater = 0f;
         private float _onFadeStartVolume;
 
-        public Audio(in int audioID, in AudioType audioType, AudioClip clip, in bool loop, in bool persist, in float volume, in float fadeInValue,
-            in float fadeOutValue, Transform sourceTransform, AudioSource audioSource, in bool overrideAudioSourceSettings = true)
+        public Audio()
+        {
+        }
+
+        /// <summary>
+        /// Sets the values for the class. Do not call this method manually!
+        /// </summary>
+        public void Init(ref int audioID, ref AudioType audioType, AudioClip clip, ref bool loop, ref bool persist, ref float volume, ref float fadeInValue,
+            ref float fadeOutValue, Transform sourceTransform, AudioSource audioSource, ref bool sourceTransformIsManager, bool overrideAudioSourceSettings = true)
         {
             // Set unique audio ID
             AudioID = audioID;
@@ -247,14 +259,19 @@ namespace Lineri.SoundSystem
             this.FadeInSeconds = fadeInValue;
             this.FadeOutSeconds = fadeOutValue;
             this.DeleteAudioSource = overrideAudioSourceSettings;
+            this.SourceTransformIsManager = sourceTransformIsManager;
             this._targetVolume = volume;
             this._initTargetVolume = volume;
-
+            
             // Initliaze states
             IsPlaying = false;
             Paused = false;
             Activated = false;
             Deleted = false;
+            
+            // Set important values
+            audioSource.clip = _clip;
+            audioSource.volume = Volume;
         }
 
         /// <summary>
@@ -262,31 +279,29 @@ namespace Lineri.SoundSystem
         /// </summary>
         private void SetValueAudioSource()
         {
+            AudioSource audioSource = AudioSource;
+            
             if (DeleteAudioSource)
             {
-                AudioSource.clip = _clip;
-                AudioSource.loop = Loop;
-                AudioSource.mute = Mute;
-                AudioSource.volume = Volume;
-                AudioSource.priority = 128;
-                AudioSource.pitch = Pitch;
-                AudioSource.panStereo = 0;
-                AudioSource.reverbZoneMix = 1;
-                AudioSource.dopplerLevel = 1;
-                AudioSource.spatialBlend = 1;
-                AudioSource.spread = 0;
-                AudioSource.rolloffMode = AudioRolloffMode.Logarithmic;
-                AudioSource.minDistance = 1;
-                AudioSource.maxDistance = 500;        
+                audioSource.loop = Loop;
+                audioSource.mute = Mute;
+                audioSource.priority = 128;
+                audioSource.pitch = Pitch;
+                audioSource.panStereo = 0;
+                audioSource.reverbZoneMix = 1;
+                audioSource.dopplerLevel = 1;
+                audioSource.spatialBlend = 1;
+                audioSource.spread = 0;
+                audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
+                audioSource.minDistance = 1;
+                audioSource.maxDistance = 500;        
             }
             //uses the current audio source settings, except for some of them
             else
             {
-                AudioSource.clip = _clip;
-                AudioSource.loop = Loop;
-                AudioSource.volume = Volume;
-                AudioSource.pitch = Pitch;
-                Mute = AudioSource.mute;
+                audioSource.loop = Loop;
+                audioSource.pitch = Pitch;
+                Mute = audioSource.mute;
             }
         }
 
@@ -297,9 +312,9 @@ namespace Lineri.SoundSystem
         {
             if (!Activated)
             {
+                _fadeInterpolater = -Time.unscaledDeltaTime;
                 SetValueAudioSource();
                 Activated = true;
-                _fadeInterpolater = -Time.unscaledDeltaTime;
             }
 
             // Increase/decrease volume to reach the current target
@@ -355,9 +370,8 @@ namespace Lineri.SoundSystem
                 IsPlaying = false;
                 Paused = false;
             }
-
             // Update playing status
-            if (AudioSource.isPlaying != IsPlaying && Application.isFocused)
+            else if (Application.isFocused)
             {
                 IsPlaying = AudioSource.isPlaying;
             }
@@ -377,6 +391,7 @@ namespace Lineri.SoundSystem
         /// <param name="volume">The target volume</param>
         public void Play(float volume)
         {
+            PlayedStart = true;
             IsPlaying = true;
             AudioSource.Play();
             SetVolume(volume);
@@ -477,12 +492,18 @@ namespace Lineri.SoundSystem
 
         public void Delete()
         {
-            AudioSource.Stop();
+            if (IsPlaying)
+            {
+                AudioSource.Stop();
+            }
+            
             Stopping = false;
             IsPlaying = false;
             Paused = false;
             AudioSource = null;
             Deleted = true;
+            Activated = false;
+            PlayedStart = false;
         }
     }
 }

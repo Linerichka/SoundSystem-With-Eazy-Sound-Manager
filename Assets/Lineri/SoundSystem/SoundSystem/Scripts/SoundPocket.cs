@@ -122,11 +122,8 @@ namespace Lineri.SoundSystem
         private bool _clipsTogetherPlayCalled;
         private int _numberClipPlayedInList = 0;
         protected bool _playWasCalled = false;
-        #region To optimize GetAudioFromClips()
-        private List<Audio> _audioFromClips = new();
-        private List<Audio> _audiosResultGetAudio = new();
-        private bool _listsClipsChanged = false;
-        #endregion
+        private List<Audio> _audioFromClips = new List<Audio>(4);
+        private bool _audioFromClipsChanged = false;
         //use it to force new clips to start, even if the clips are already being played
         private bool _ignorePlayingCurrentClips = false;
         private bool _callPlay = true;
@@ -140,13 +137,14 @@ namespace Lineri.SoundSystem
 
         private void Update()
         {
+            _audioFromClipsChanged = true;
             PlayAudioFromList(false);
         }
 
         #region Public void
         public virtual void Play()
         {
-            if (!CheñkInstalledClipsAndDisableIfNotInstalled()) return;
+            if (!CheckInstalledClipsAndDisableIfNotInstalled()) return;
 
             _playWasCalled = true;
             PlayClips = true;
@@ -204,7 +202,7 @@ namespace Lineri.SoundSystem
         /// <summary>
         /// Update the parameters of the clips that are currently playing (pitch, volume).
         /// </summary>
-        private void UpdateParametersAllPlayingClips(in _typeUpdate typeUpdate)
+        private void UpdateParametersAllPlayingClips(_typeUpdate typeUpdate)
         {
             if (!(Application.isPlaying && _startInvoked)) return;
             if (EazySoundManager.Gameobject == null) return;
@@ -223,7 +221,7 @@ namespace Lineri.SoundSystem
         }
 
         #region PlayClip
-        protected virtual void PlayAudioFromList(in bool callPlay)
+        protected virtual void PlayAudioFromList(bool callPlay)
         {
             if (!_playWasCalled || !PlayClips || !Application.isFocused) return;
 
@@ -232,7 +230,7 @@ namespace Lineri.SoundSystem
         }
 
         #region Play Together
-        private void PlayAllClipsInListTogether(in bool callPlay)
+        private void PlayAllClipsInListTogether(bool callPlay)
         {
             if (!((_clipsTogetherPlayCalled && LoopClips) || callPlay)) return;
             if (!PlaybackOfClipsIsComplete()) return;
@@ -247,7 +245,7 @@ namespace Lineri.SoundSystem
             _clipsTogetherPlayCalled = true;
         }
 
-        private void PlayAllClipsInList(List<AudioClip> listClips, in AudioType AudioType)
+        private void PlayAllClipsInList(List<AudioClip> listClips, AudioType AudioType)
         {
             foreach (AudioClip clip in listClips)
             {
@@ -255,18 +253,18 @@ namespace Lineri.SoundSystem
             }
         }
 
-        private int PlayClipInListTogether(AudioClip clip, in AudioType AudioType)
+        private Audio PlayClipInListTogether(AudioClip clip, AudioType AudioType)
         {
-            int id = PlayAudio(clip, AudioType);
+            Audio audio = PlayAudio(clip, AudioType);
             float clipPitch = Pitch + UnityEngine.Random.Range(-RandomPitch, RandomPitch);
-            EazySoundManager.GetAudio(id, AudioType).Pitch = clipPitch;
+            audio.Pitch = clipPitch;
 
-            return id;
+            return audio;
         }
         #endregion
 
         #region Play One After The Other
-        protected void PlayClipsOneAfterTheOther(in bool callPlay)
+        protected void PlayClipsOneAfterTheOther(bool callPlay)
         {
             if (!(MusicClips.Count > _numberClipPlayedInList ||
                 SoundClips.Count > _numberClipPlayedInList ||
@@ -302,22 +300,22 @@ namespace Lineri.SoundSystem
             _numberClipPlayedInList++;
         }
 
-        private int PlayClipInList(List<AudioClip> clips, in AudioType AudioType)
+        private Audio PlayClipInList(List<AudioClip> clips, AudioType AudioType)
         {
             int clipNumber;
 
             if (RandomPlayClip) clipNumber = UnityEngine.Random.Range(0, clips.Count);         
             else clipNumber = _numberClipPlayedInList;           
 
-            int id = PlayAudio(clips[clipNumber], AudioType);
+            Audio audio = PlayAudio(clips[clipNumber], AudioType);
             float clipPitch = Pitch + UnityEngine.Random.Range(-RandomPitch, RandomPitch);
-            EazySoundManager.GetAudio(id, AudioType).Pitch = clipPitch;
+            audio.Pitch = clipPitch;
 
-            return id;
+            return audio;
         }
         #endregion
 
-        private int PlayAudio(AudioClip clip, in AudioType AudioType)
+        private Audio PlayAudio(AudioClip clip, AudioType AudioType)
         {
             switch (AudioType)
             {
@@ -328,27 +326,26 @@ namespace Lineri.SoundSystem
                 case AudioType.UISound:
                     return PlayAudioUISound(clip);
                 default:
-                    unchecked
-                    {
-                        return (int)Mathf.NegativeInfinity;
-                    }
+                    return null;
             }
         }
-
-        protected virtual int PlayAudioMusic(AudioClip clip, AudioSource audioSource = null)
+        
+        protected virtual Audio PlayAudioMusic(AudioClip clip, AudioSource audioSource = null)
         {
-            int id = EazySoundManager.PlayMusic(clip, SoundVolume, false, PersistSoundOnSceneLoad,
+            Audio audio = EazySoundManager.PlayMusic(clip, SoundVolume, false, PersistSoundOnSceneLoad,
                 FadeInCanSet() ? FadeInSecond : 0f,
                 FadeOutSecond, CurrentMusicFadeOut, Transform3dAudio, audioSource);
-            return id;
+            _audioFromClips.Add(audio);
+            return audio;
         }
-
-        protected virtual int PlayAudioSound(AudioClip clip, AudioSource audioSource = null)
+        
+        protected virtual Audio PlayAudioSound(AudioClip clip, AudioSource audioSource = null)
         {
-            int id = EazySoundManager.PlaySound(clip, SoundVolume, false, PersistSoundOnSceneLoad,
+            Audio audio = EazySoundManager.PlaySound(clip, SoundVolume, false, PersistSoundOnSceneLoad,
                 FadeInCanSet() ? FadeInSecond : 0f, 
                 FadeOutSecond, Transform3dAudio, audioSource);
-            return id;
+            _audioFromClips.Add(audio);
+            return audio;
         }
 
         /// <summary>
@@ -356,7 +353,7 @@ namespace Lineri.SoundSystem
         /// </summary>
         private bool FadeInCanSet()
         {
-            // Ñheck whether we can apply fade in to the clip in normal mode if there are no forbidding conditions
+            // Check whether we can apply fade in to the clip in normal mode if there are no forbidding conditions
             bool canApplyFadeInToClip = (!FadeInFirstClipInQueue && !FadeInClipAfterCallPlay);
             // Check whether we can apply fade in to the clip if it is the first in the queue and the conditions allow
             bool canApplyFadeInToFirstClip = (FadeInFirstClipInQueue && _numberClipPlayedInList == 0 && !PlayAllClipsTogether);
@@ -366,116 +363,40 @@ namespace Lineri.SoundSystem
             return fadeInSet;
         }
 
-        protected virtual int PlayAudioUISound(AudioClip clip)
+        protected virtual Audio PlayAudioUISound(AudioClip clip)
         {
-            int id = EazySoundManager.PlayUISound(clip, SoundVolume);
-            return id;
+            Audio audio = EazySoundManager.PlayUISound(clip, SoundVolume);
+            _audioFromClips.Add(audio);
+            return audio;
         }
         #endregion
-
-        #region Get Audio list
+        
         /// <summary>
         /// Returns Audio of the current clips.
         /// </summary>
         private List<Audio> GetAudioFromClips()
         {
-            ///if _audioFromClips corresponds to what can be obtained using GetAudioFromClips(),
-            ///then you can immediately return it without performing unnecessary calculations
-            if (CheckAudioFromClipsChangesAndForRelevance())
+            if (!_audioFromClipsChanged)
             {
                 return _audioFromClips;
             }
-
-            _audiosResultGetAudio.Clear();
-
-            for (int i = 0; i < Mathf.Max(MusicClips.Count, Mathf.Max(SoundClips.Count, SoundUiClips.Count)); i++)
-            {
-                GetAudioByIndexAndAddToList(_audiosResultGetAudio, i, AudioType.Music);
-                GetAudioByIndexAndAddToList(_audiosResultGetAudio, i, AudioType.Sound);
-                GetAudioByIndexAndAddToList(_audiosResultGetAudio, i, AudioType.UISound);
-            }
-
-            _audioFromClips = _audiosResultGetAudio;
-
-            return _audiosResultGetAudio;
-        }
-
-        /// <summary>
-        /// Adds clips to the assigned list, also returns false if the clip was not added, true if added
-        /// </summary>
-        private bool GetAudioByIndexAndAddToList(List<Audio> audios, in int i, in AudioType AudioType)
-        {
-            List<AudioClip> clips;
-
-            switch (AudioType)
-            {
-                case AudioType.Music:
-                    {
-                        clips = MusicClips;
-                        break;
-                    }
-                case AudioType.Sound:
-                    {
-                        clips = SoundClips;
-                        break;
-                    }
-                case AudioType.UISound:
-                    {
-                        clips = SoundUiClips;
-                        break;
-                    }
-                default:
-                    {
-                        return false;
-                    }
-            }
-
-            if (!(i < clips.Count)) return false;
-
-            Audio audio = EazySoundManager.GetAudio(clips[i], AudioType);
-
-            if (audio == null) return false;
-
-            audios.Add(audio);
-
-            return true;
-        }
-
-        #region Cheking changes
-        /// <summary>
-        /// Returns true if the list stores all current clips
-        /// </summary>
-        private bool CheckAudioFromClipsChangesAndForRelevance()
-        {
-            int audioCount = _audioFromClips.Count;
-
-            if (audioCount == 0 || !ChekListClipsChanged()) return false;
-
-            for (int i = 0; i < audioCount; i++)
+            
+            int length = _audioFromClips.Count;
+            for (int i = 0; i < length; i++)
             {
                 Audio audio = _audioFromClips[i];
-
-                if (audio == null || audio.Deleted) return false;
+                
+                if (audio == null || audio.Deleted)
+                {
+                    _audioFromClips.RemoveAt(i);
+                    length--;
+                    i--;
+                }
             }
 
-            return true;
+            _audioFromClipsChanged = false;
+            return _audioFromClips;
         }
-
-
-        /// <summary>
-        /// Returns true if the clips have not been modified
-        /// </summary>
-        private bool ChekListClipsChanged()
-        {
-            if (_listsClipsChanged)
-            {
-                _listsClipsChanged = false;
-                return false;
-            }
-            else return true;
-        }
-        #endregion
-        #endregion
 
         /// <summary>
         /// If the clips are no longer playing, returns true.
@@ -490,15 +411,7 @@ namespace Lineri.SoundSystem
                 return true;
             }
 
-            List<Audio> audios = GetAudioFromClips();
-            int audioCount = audios.Count;
-
-            for (int i = 0; i < audioCount; i++)
-            {
-                Audio audio = audios[i];
-                if (audio != null && !audio.Deleted) return false;
-            }
-
+            if (GetAudioFromClips().Count > 0) return false;
 
             ClipsQueueEnded?.Invoke();
             return true;
@@ -523,7 +436,7 @@ namespace Lineri.SoundSystem
         /// Returns true if clips are installed.
         /// If the clips are not set, it calls gameObject.SetActive(false) and returns false.
         /// </summary>
-        private bool CheñkInstalledClipsAndDisableIfNotInstalled()
+        private bool CheckInstalledClipsAndDisableIfNotInstalled()
         {
             if (MusicClips.Count == 0 &&
                 SoundClips.Count == 0 &&
@@ -554,7 +467,6 @@ namespace Lineri.SoundSystem
 #pragma warning disable CS0618
             CurrentMusicFadeOut = CurrentMusicFadeOutSeconds;
 #pragma warning restore CS0618
-            _listsClipsChanged = true;
         }
         #endregion
     }
