@@ -248,8 +248,8 @@ namespace Lineri.SoundSystem
             // Set unique audio ID
             AudioID = audioID;
 
-            /// Initialize values
-            /// Use private fields for setting to prevent parameters from being applied to the AudioSource
+            // Initialize values
+            // Use private fields for setting to prevent parameters from being applied to the AudioSource
             this.AudioSource = audioSource;
             this.Type = audioType;
             this._clip = clip;
@@ -332,9 +332,9 @@ namespace Lineri.SoundSystem
                     fadeValue = _tempFadeSeconds == -1f ? FadeInSeconds : _tempFadeSeconds;
                 }
 
-                /// If fadeValue = 0, then the result (_fadeInterpolater / fadeValue) will be NaN.
-                /// Since both values are of the float type, an exception will not be created.
-                /// In turn, the Lerp method uses the Mathf method for the t argument.Clamp01() which in turn returns 1 if it takes a NaN.
+                // If fadeValue = 0, then the result (_fadeInterpolater / fadeValue) will be NaN.
+                // Since both values are of the float type, an exception will not be created.
+                // In turn, the Lerp method uses the Mathf method for the t argument.Clamp01() which in turn returns 1 if it takes a NaN.
                 Volume = Mathf.Lerp(_onFadeStartVolume, _targetVolume, _fadeInterpolater / fadeValue);
             }
             else if (_tempFadeSeconds != -1f)
@@ -371,7 +371,7 @@ namespace Lineri.SoundSystem
                 Paused = false;
             }
             // Update playing status
-            else if (Application.isFocused)
+            else
             {
                 IsPlaying = AudioSource.isPlaying;
             }

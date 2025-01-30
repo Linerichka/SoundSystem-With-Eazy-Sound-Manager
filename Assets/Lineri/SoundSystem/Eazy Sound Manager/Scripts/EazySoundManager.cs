@@ -1,7 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
-using System;
+using AudioType = Lineri.SoundSystem.Audio.AudioType;
 
 namespace Lineri.SoundSystem
 {
@@ -22,6 +22,9 @@ namespace Lineri.SoundSystem
         /// If set to true, when starting a new music Clip, all others will be stopped
         /// </summary>
         public static bool OnlyOnePlayableMusicClip = true;
+
+        public static bool CanPlayInBackground = true;
+        public static bool CanPlay => Application.isFocused || CanPlayInBackground;
 
         /// <summary>
         /// Global volume ranging from 0 to 1
@@ -64,13 +67,15 @@ namespace Lineri.SoundSystem
         private static float _globalUISoundsVolume = 1f;
 
         #region Oprimize
-        private static StackFast<AudioSource> _cachedAudioSourceOnGameobject;
-         static StackFast<Audio> _cachedAudio;
+        private static Queue<AudioSource> _cachedAudioSourceOnGameobject;
+        private static Queue<Audio> _cachedAudio;
         #endregion
 
-        private static ListFastStatic<Audio> _musicAudio;
-        private static ListFastStatic<Audio> _soundsAudio;
-        private static ListFastStatic<Audio> _UISoundsAudio;
+        private static ListAudio _musicAudio;
+        private static ListAudio _soundsAudio;
+        private static ListAudio _UISoundsAudio;
+        
+        private static bool _pausedByLostFocus = false;
 
         public static EazySoundManager Instance
         {
@@ -92,8 +97,8 @@ namespace Lineri.SoundSystem
 
         static EazySoundManager()
         {
-            /// If the class is added to the GameObject manually, 
-            /// Unity throws an implicit content exception that does not indicate a specific problem.
+            // If the class is added to the GameObject manually, 
+            // Unity throws an implicit content exception that does not indicate a specific problem.
             try
             {
                 // If the class has already been added to the object at the time of calling new GameObject(), an exception will be received.
@@ -112,11 +117,11 @@ namespace Lineri.SoundSystem
         /// </summary>
         private void Init()
         {
-            _musicAudio = new ListFastStatic<Audio>(64);
-            _soundsAudio = new ListFastStatic<Audio>(64);
-            _UISoundsAudio = new ListFastStatic<Audio>(64);
-            _cachedAudioSourceOnGameobject = new StackFast<AudioSource>(64);
-            _cachedAudio = new StackFast<Audio>(64);
+            _musicAudio = new ListAudio(64);
+            _soundsAudio = new ListAudio(64);
+            _UISoundsAudio = new ListAudio(64);
+            _cachedAudioSourceOnGameobject = new Queue<AudioSource>(64);
+            _cachedAudio = new Queue<Audio>(64);
 
             DontDestroyOnLoad(this);
         }
@@ -150,19 +155,31 @@ namespace Lineri.SoundSystem
 
         private void Update()
         {
-            UpdateAllAudio(_musicAudio);
-            UpdateAllAudio(_soundsAudio);
-            UpdateAllAudio(_UISoundsAudio);
+            if (CanPlay)
+            {
+                if (_pausedByLostFocus)
+                {
+                    _pausedByLostFocus = false;
+                    UnPauseAll();
+                }
+                
+                UpdateAllAudio(_musicAudio);
+                UpdateAllAudio(_soundsAudio);
+                UpdateAllAudio(_UISoundsAudio);
+            }
+            else
+            {
+                PauseAll();
+                _pausedByLostFocus = true;
+            }
         }
         
         /// <summary>
         /// Updates the state of all audios of an audio dist
         /// </summary>
         /// <param name="listAudio">The audio dist to update</param>
-        private static void UpdateAllAudio(ListFastStatic<Audio> listAudio)
+        private static void UpdateAllAudio(ListAudio listAudio)
         {
-            if (!Application.isFocused) return;
-
             // Go through all audios and update them
             int count = listAudio.Count;
             for (int i = 0; i < count; i++)
@@ -186,19 +203,19 @@ namespace Lineri.SoundSystem
         /// </summary>
         /// <param name="audioType">The audio type of the dist to return</param>
         /// <returns>An audio dist</returns>
-        private static ListFastStatic<Audio> GetAudioTypeList(Audio.AudioType audioType)
+        private static ListAudio GetAudioTypeList(AudioType audioType)
         {
-            ListFastStatic<Audio> listAudio;
+            ListAudio listAudio;
 
             switch (audioType)
             {
-                case Audio.AudioType.Music:
+                case AudioType.Music:
                     listAudio = _musicAudio;
                     break;
-                case Audio.AudioType.Sound:
+                case AudioType.Sound:
                     listAudio = _soundsAudio;
                     break;
-                case Audio.AudioType.UISound:
+                case AudioType.UISound:
                     listAudio = _UISoundsAudio;
                     break;
                 default:
@@ -213,7 +230,7 @@ namespace Lineri.SoundSystem
         /// Remove all non-persistant audios from an audio dist
         /// </summary>
         /// <param name="listAudio">The audio dist whose non-persistant audios are getting removed</param>
-        private static void RemoveNonPersistAudio(ListFastStatic<Audio> listAudio)
+        private static void RemoveNonPersistAudio(ListAudio listAudio)
         {
             // Go through all audios and remove them if they should not persist through scenes
             for (int i = 0; i < listAudio.Count; i++)
@@ -226,7 +243,7 @@ namespace Lineri.SoundSystem
             }
         }
 
-        private static void DeleteAudio(Audio audio, ListFastStatic<Audio> listAudio, ref int key)
+        private static void DeleteAudio(Audio audio, ListAudio listAudio, ref int key)
         {
             if (audio.AudioSource.transform == Gameobject.transform)
             {
@@ -266,15 +283,15 @@ namespace Lineri.SoundSystem
         /// </summary>
         /// <param name="audioID">The id of the Audio to be retrieved</param>
         /// <returns>Audio that has as its id the audioID, null if no such Audio is found</returns>
-        public static Audio GetAudio(Audio.AudioType audioType, int audioID)
+        public static Audio GetAudio(AudioType audioType, int audioID)
         {
             switch (audioType)
             {
-                case Audio.AudioType.Music:
+                case AudioType.Music:
                     return GetMusicAudio(audioID);
-                case Audio.AudioType.Sound:
+                case AudioType.Sound:
                     return GetSoundAudio(audioID);
-                case Audio.AudioType.UISound:
+                case AudioType.UISound:
                     return GetUISoundAudio(audioID);
                 default: return null;
             }
@@ -285,15 +302,15 @@ namespace Lineri.SoundSystem
         /// </summary>
         /// <param name="audioClip">The audio clip of the Audio to be retrieved</param>
         /// <returns>All occurrence of Audio that has as plays the audioClip, null if no such Audio is found</returns>
-        public static List<Audio> GetAudio(Audio.AudioType audioType, AudioClip audioClip)
+        public static List<Audio> GetAudio(AudioType audioType, AudioClip audioClip)
         {
             switch (audioType)
             {
-                case Audio.AudioType.Music:
+                case AudioType.Music:
                     return GetMusicAudio(audioClip);
-                case Audio.AudioType.Sound:
+                case AudioType.Sound:
                     return GetSoundAudio(audioClip);
-                case Audio.AudioType.UISound:
+                case AudioType.UISound:
                     return GetUISoundAudio(audioClip);
                 default: return null;
             }
@@ -306,7 +323,7 @@ namespace Lineri.SoundSystem
         /// <returns>Music Audio that has as its id the audioID if one is found, null if no such Audio is found</returns>
         public static Audio GetMusicAudio(int audioID)
         {
-            return GetAudioP(Audio.AudioType.Music, ref audioID);
+            return GetAudioP(AudioType.Music, ref audioID);
         }
 
         /// <summary>
@@ -316,7 +333,7 @@ namespace Lineri.SoundSystem
         /// <returns>All occurrence of music Audio that has as plays the audioClip, null if no such Audio is found</returns>
         public static List<Audio> GetMusicAudio(AudioClip audioClip)
         {
-            return GetAudioP(Audio.AudioType.Music, audioClip);
+            return GetAudioP(AudioType.Music, audioClip);
         }
 
         /// <summary>
@@ -326,7 +343,7 @@ namespace Lineri.SoundSystem
         /// <returns>Sound fx Audio that has as its id the audioID if one is found, null if no such Audio is found</returns>
         public static Audio GetSoundAudio(int audioID)
         {
-            return GetAudioP(Audio.AudioType.Sound, ref audioID);
+            return GetAudioP(AudioType.Sound, ref audioID);
         }
 
         /// <summary>
@@ -336,7 +353,7 @@ namespace Lineri.SoundSystem
         /// <returns>All occurrence of sound Audio that has as plays the audioClip, null if no such Audio is found</returns>
         public static List<Audio> GetSoundAudio(AudioClip audioClip)
         {
-            return GetAudioP(Audio.AudioType.Sound, audioClip);
+            return GetAudioP(AudioType.Sound, audioClip);
         }
 
         /// <summary>
@@ -346,7 +363,7 @@ namespace Lineri.SoundSystem
         /// <returns>UI sound fx Audio that has as its id the audioID if one is found, null if no such Audio is found</returns>
         public static Audio GetUISoundAudio(int audioID)
         {
-            return GetAudioP(Audio.AudioType.UISound, ref audioID);
+            return GetAudioP(AudioType.UISound, ref audioID);
         }
 
         /// <summary>
@@ -356,21 +373,21 @@ namespace Lineri.SoundSystem
         /// <returns>All occurrence of UI sound Audio that has as plays the audioClip, null if no such Audio is found</returns>
         public static List<Audio> GetUISoundAudio(AudioClip audioClip)
         {
-            return GetAudioP(Audio.AudioType.UISound, audioClip);
+            return GetAudioP(AudioType.UISound, audioClip);
         }
 
-        private static Audio GetAudioP(Audio.AudioType audioType, ref int audioID)
+        private static Audio GetAudioP(AudioType audioType, ref int audioID)
         {
-            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
+            ListAudio listAudio = GetAudioTypeList(audioType);
 
             if (!listAudio.Contains(audioID)) return null;
 
             return listAudio[audioID];
         }
 
-        private static List<Audio> GetAudioP(Audio.AudioType audioType, AudioClip audioClip)
+        private static List<Audio> GetAudioP(AudioType audioType, AudioClip audioClip)
         {
-            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
+            ListAudio listAudio = GetAudioTypeList(audioType);
             List<Audio> result = new List<Audio>();
             
             int count = listAudio.Count;
@@ -401,7 +418,7 @@ namespace Lineri.SoundSystem
         public static Audio PrepareMusic(AudioClip clip, float volume = 1f, bool loop = false, bool persist = false,
             float fadeInSeconds = 0f, float fadeOutSeconds = 0f, Transform sourceTransform = null, AudioSource audioSource = null)
         {
-            return PrepareAudio(Audio.AudioType.Music, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, sourceTransform, audioSource);
+            return PrepareAudio(AudioType.Music, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, sourceTransform, audioSource);
         }
 
         /// <summary>
@@ -416,7 +433,7 @@ namespace Lineri.SoundSystem
         public static Audio PrepareSound(AudioClip clip, float volume = 1f, bool loop = false, bool persist = false,
             float fadeInSeconds = 0f, float fadeOutSeconds = 0f, Transform sourceTransform = null, AudioSource audioSource = null)
         {
-            return PrepareAudio(Audio.AudioType.Sound, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, sourceTransform, audioSource);
+            return PrepareAudio(AudioType.Sound, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, sourceTransform, audioSource);
         }
         
         /// <summary>
@@ -427,20 +444,49 @@ namespace Lineri.SoundSystem
         /// <returns>An Audio class that allows you to control the sound being played.</returns>
         public static Audio PrepareUISound(AudioClip clip, float volume = 1f)
         {
-            return PrepareAudio(Audio.AudioType.UISound, clip, volume, false, false, 0f, 0f, null);
+            return PrepareAudio(AudioType.UISound, clip, volume, false, false, 0f, 0f, null);
         }
-
-        private static Audio PrepareAudio(Audio.AudioType audioType, AudioClip clip, float volume, bool loop, bool persist,
-            float fadeInSeconds, float fadeOutSeconds, Transform sourceTransform, AudioSource audioSource = null)
+        
+        private static Audio PrepareAudio(AudioType audioType, AudioClip clip, float volume, bool loop, bool persist,
+            float fadeInSeconds, float fadeOutSeconds, Transform sourceTransform)
         {
+#if DEBUG
             if (clip == null)
             {
                 throw new System.Exception("[Eazy Sound Manager] Audio clip is null");
             }
+#endif
+            
+            bool sourceNull = true;
+            ListAudio listAudio = GetAudioTypeList(audioType);
+            int id = listAudio.GetFreeIndex();
+            sourceTransform = sourceTransform == null ? Gameobject.transform : sourceTransform;
+            
+            Audio audio = GetAudioClass();
+            audio.Init(
+                ref id, ref audioType, clip, ref loop, ref persist, ref volume, ref fadeInSeconds, ref fadeOutSeconds,
+                sourceTransform, GetAudioSource(sourceTransform, ref sourceNull),
+                ref sourceNull);
 
-            // code: 0.2.2.0 02  |  It is possible to exclude resource-intensive verification
+            // Add it to list
+            listAudio[id] = (audio);
+            
+            return audio;
+        }
+
+        private static Audio PrepareAudio(AudioType audioType, AudioClip clip, float volume, bool loop, bool persist,
+            float fadeInSeconds, float fadeOutSeconds, Transform sourceTransform, AudioSource audioSource)
+        {
+            #if DEBUG
+            if (clip == null)
+            {
+                throw new System.Exception("[Eazy Sound Manager] Audio clip is null");
+            }
+            #endif
+
+            // Left to avoid backward compatibility errors
             bool sourceNull = audioSource == null;
-            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
+            ListAudio listAudio = GetAudioTypeList(audioType);
             int id = listAudio.GetFreeIndex();
             sourceTransform = sourceTransform == null ? Gameobject.transform : sourceTransform;
             
@@ -509,7 +555,7 @@ namespace Lineri.SoundSystem
         public static Audio PlayMusic(AudioClip clip, float volume = 1f, bool loop = false, bool persist = false,
             float fadeInSeconds = 0f, float fadeOutSeconds = 0f, float currentMusicfadeOutSeconds = 0f, Transform sourceTransform = null, AudioSource audioSource = null)
         {
-            return PlayAudio(Audio.AudioType.Music, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds,
+            return PlayAudio(AudioType.Music, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds,
                 currentMusicfadeOutSeconds, sourceTransform, audioSource);
         }
 
@@ -525,7 +571,7 @@ namespace Lineri.SoundSystem
         public static Audio PlaySound(AudioClip clip, float volume = 1f, bool loop = false, bool persist = false,
             float fadeInSeconds = 0f, float fadeOutSeconds = 0f, Transform sourceTransform = null, AudioSource audioSource = null)
         {
-            return PlayAudio(Audio.AudioType.Sound, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, -1f, sourceTransform, audioSource);
+            return PlayAudio(AudioType.Sound, clip, volume, loop, persist, fadeInSeconds, fadeOutSeconds, -1f, sourceTransform, audioSource);
         }
 
         /// <summary>
@@ -536,14 +582,14 @@ namespace Lineri.SoundSystem
         /// <returns>An Audio class that allows you to control the sound being played.</returns>
         public static Audio PlayUISound(AudioClip clip, float volume = 1f)
         {
-            return PlayAudio(Audio.AudioType.UISound, clip, volume, false, false, 0f, 0f, -1f, null);
+            return PlayAudio(AudioType.UISound, clip, volume, false, false, 0f, 0f, -1f, null);
         }
 
-        private static Audio PlayAudio(Audio.AudioType audioType, AudioClip clip, float volume, bool loop, bool persist,
+        private static Audio PlayAudio(AudioType audioType, AudioClip clip, float volume, bool loop, bool persist,
             float fadeInSeconds, float fadeOutSeconds, float currentMusicfadeOutSeconds, Transform sourceTransform, AudioSource audioSource = null)
         {
             // Stop all current music playing
-            if (OnlyOnePlayableMusicClip && audioType == Audio.AudioType.Music)
+            if (OnlyOnePlayableMusicClip && audioType == AudioType.Music)
             {
                 StopAllMusic(currentMusicfadeOutSeconds);
             }
@@ -582,7 +628,7 @@ namespace Lineri.SoundSystem
         /// </summary>
         public static void StopAllMusic()
         {
-            StopAllAudio(Audio.AudioType.Music, -1f);
+            StopAllAudio(AudioType.Music, -1f);
         }
 
         /// <summary>
@@ -591,7 +637,7 @@ namespace Lineri.SoundSystem
         /// <param name="fadeOutSeconds"> How many seconds it needs for all music audio to fade out. It will override  their own fade out seconds. If -1 is passed, all music will keep their own fade out seconds</param>
         public static void StopAllMusic(float fadeOutSeconds)
         {
-            StopAllAudio(Audio.AudioType.Music, fadeOutSeconds);
+            StopAllAudio(AudioType.Music, fadeOutSeconds);
         }
 
         /// <summary>
@@ -599,7 +645,7 @@ namespace Lineri.SoundSystem
         /// </summary>
         public static void StopAllSounds()
         {
-            StopAllAudio(Audio.AudioType.Sound, -1f);
+            StopAllAudio(AudioType.Sound, -1f);
         }
 
         /// <summary>
@@ -607,12 +653,12 @@ namespace Lineri.SoundSystem
         /// </summary>
         public static void StopAllUISounds()
         {
-            StopAllAudio(Audio.AudioType.UISound, -1f);
+            StopAllAudio(AudioType.UISound, -1f);
         }
 
-        private static void StopAllAudio(Audio.AudioType audioType, float fadeOutSeconds)
+        private static void StopAllAudio(AudioType audioType, float fadeOutSeconds)
         {
-            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
+            ListAudio listAudio = GetAudioTypeList(audioType);
 
             foreach (Audio audio in listAudio)
             {
@@ -641,7 +687,7 @@ namespace Lineri.SoundSystem
         /// </summary>
         public static void PauseAllMusic()
         {
-            PauseAllAudio(Audio.AudioType.Music);
+            PauseAllAudio(AudioType.Music);
         }
 
         /// <summary>
@@ -649,7 +695,7 @@ namespace Lineri.SoundSystem
         /// </summary>
         public static void PauseAllSounds()
         {
-            PauseAllAudio(Audio.AudioType.Sound);
+            PauseAllAudio(AudioType.Sound);
         }
 
         /// <summary>
@@ -657,12 +703,12 @@ namespace Lineri.SoundSystem
         /// </summary>
         public static void PauseAllUISounds()
         {
-            PauseAllAudio(Audio.AudioType.UISound);
+            PauseAllAudio(AudioType.UISound);
         }
 
-        private static void PauseAllAudio(Audio.AudioType audioType)
+        private static void PauseAllAudio(AudioType audioType)
         {
-            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
+            ListAudio listAudio = GetAudioTypeList(audioType);
 
             foreach (Audio audio in listAudio)
             {
@@ -689,7 +735,7 @@ namespace Lineri.SoundSystem
         /// </summary>
         public static void UnPauseAllMusic()
         {
-            UnPauseAllAudio(Audio.AudioType.Music);
+            UnPauseAllAudio(AudioType.Music);
         }
 
         /// <summary>
@@ -697,7 +743,7 @@ namespace Lineri.SoundSystem
         /// </summary>
         public static void UnPauseAllSounds()
         {
-            UnPauseAllAudio(Audio.AudioType.Sound);
+            UnPauseAllAudio(AudioType.Sound);
         }
 
         /// <summary>
@@ -705,12 +751,12 @@ namespace Lineri.SoundSystem
         /// </summary>
         public static void UnPauseAllUISounds()
         {
-            UnPauseAllAudio(Audio.AudioType.UISound);
+            UnPauseAllAudio(AudioType.UISound);
         }
 
-        private static void UnPauseAllAudio(Audio.AudioType audioType)
+        private static void UnPauseAllAudio(AudioType audioType)
         {
-            ListFastStatic<Audio> listAudio = GetAudioTypeList(audioType);
+            ListAudio listAudio = GetAudioTypeList(audioType);
 
             foreach (Audio audio in listAudio) audio.UnPause();
         }

@@ -223,7 +223,7 @@ namespace Lineri.SoundSystem
         #region PlayClip
         protected virtual void PlayAudioFromList(bool callPlay)
         {
-            if (!_playWasCalled || !PlayClips || !Application.isFocused) return;
+            if (!_playWasCalled || !PlayClips || !EazySoundManager.CanPlay) return;
 
             if (PlayAllClipsTogether) PlayAllClipsInListTogether(callPlay);        
             else PlayClipsOneAfterTheOther(callPlay);          
